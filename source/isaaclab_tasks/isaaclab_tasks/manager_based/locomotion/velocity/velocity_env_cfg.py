@@ -100,7 +100,7 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(0.0, 0.0), heading=(-0.0, 0.0)
         ),
     )
 
@@ -264,6 +264,14 @@ class RewardsCfg:
 
 
 @configclass
+class paper_RewardsCfg:
+    """Reward terms for the MDP."""
+    # is empty, rewards will be added in inner files
+    pass
+    
+
+
+@configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
@@ -298,6 +306,48 @@ class LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+    events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
+
+    def __post_init__(self):
+        """Post initialization."""
+        # general settings
+        self.decimation = 4
+        self.episode_length_s = 20.0
+        # simulation settings
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physics_material = self.scene.terrain.physics_material
+        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
+        # update sensor update periods
+        # we tick all the sensors based on the smallest update period (physics update period)
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt
+
+        # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
+        # this generates terrains with increasing difficulty and is useful for training
+        if getattr(self.curriculum, "terrain_levels", None) is not None:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = True
+        else:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = False
+
+@configclass
+class paper_LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the locomotion velocity-tracking environment."""
+
+    # Scene settings
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    # Basic settings
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+    # MDP settings
+    rewards: paper_RewardsCfg = paper_RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
