@@ -180,6 +180,267 @@ class JointPositionToLimitsAction(ActionTerm):
         self._raw_actions[env_ids] = 0.0
 
 
+
+class JointPositionAndGainsAction(ActionTerm):
+    """Joint position action term that scales the input actions to the joint limits and applies them to the
+    articulation's joints.
+
+    This class is similar to the :class:`JointPositionAction` class. However, it performs additional
+    re-scaling of input actions to the actuator joint position limits.
+
+    While processing the actions, it performs the following operations:
+
+    1. Apply scaling to the raw actions based on :attr:`actions_cfg.JointPositionToLimitsActionCfg.scale`.
+    2. Clip the scaled actions to the range [-1, 1] and re-scale them to the joint limits if
+       :attr:`actions_cfg.JointPositionToLimitsActionCfg.rescale_to_limits` is set to True.
+
+    The processed actions are then sent as position commands to the articulation's joints.
+    """
+
+    cfg: actions_cfg.JointPositionAndGainsActionCfg
+    """The configuration of the action term."""
+    _asset: Articulation
+    """The articulation asset on which the action term is applied."""
+    _scale: torch.Tensor | float
+    """The scaling factor applied to the input action."""
+    _clip: torch.Tensor
+    """The clip applied to the input action."""
+
+    def __init__(self, cfg: actions_cfg.JointPositionAndGainsActionCfg, env: ManagerBasedEnv):
+        # initialize the action term
+        super().__init__(cfg, env)
+
+        # resolve the joints over which the action term is applied
+        self._joint_ids, self._joint_names = self._asset.find_joints(
+            self.cfg.joint_names, preserve_order=cfg.preserve_order
+        )
+        self._num_joints = len(self._joint_ids)
+        # log the resolved joint names for debugging
+        logger.info(
+            f"Resolved joint names for the action term {self.__class__.__name__}:"
+            f" {self._joint_names} [{self._joint_ids}]"
+        )
+
+        # Avoid indexing across all joints for efficiency
+        if self._num_joints == self._asset.num_joints:
+            self._joint_ids = slice(None)
+
+        
+        # Dimensione dell'azione = 3 * num_joints (pos, Kp, Kd)
+        self._action_dim = 3 * self._num_joints
+
+        # Tensors azioni raw e processed (processed = solo pos; Kp/Kd sono separati)
+        self._raw_actions = torch.zeros(self.num_envs, self._action_dim, device=self.device)
+        self._processed_actions = torch.zeros(self.num_envs, self._num_joints, device=self.device)  # pos only
+
+        self._kp_targets = torch.zeros_like(self._processed_actions)
+        self._kd_targets = torch.zeros_like(self._processed_actions)
+
+
+        
+# ---------- Parse scaling ----------
+        # pos_scale
+        if isinstance(cfg.pos_scale, (float, int)):
+            self._pos_scale = float(cfg.pos_scale)
+        elif isinstance(cfg.pos_scale, dict):
+            self._pos_scale = torch.ones(self.num_envs, self._num_joints, device=self.device)
+            idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                cfg.pos_scale, self._joint_names, preserve_order=cfg.preserve_order
+            )
+            self._pos_scale[:, idx_list] = torch.tensor(val_list, device=self.device)
+        else:
+            raise ValueError(f"Unsupported pos_scale type: {type(cfg.pos_scale)}")
+
+        # kp_scale
+        if isinstance(cfg.kp_scale, (float, int)):
+            self._kp_scale = float(cfg.kp_scale)
+        elif isinstance(cfg.kp_scale, dict):
+            self._kp_scale = torch.ones(self.num_envs, self._num_joints, device=self.device)
+            idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                cfg.kp_scale, self._joint_names, preserve_order=cfg.preserve_order
+            )
+            self._kp_scale[:, idx_list] = torch.tensor(val_list, device=self.device)
+        else:
+            raise ValueError(f"Unsupported kp_scale type: {type(cfg.kp_scale)}")
+
+        # kd_scale
+        if isinstance(cfg.kd_scale, (float, int)):
+            self._kd_scale = float(cfg.kd_scale)
+        elif isinstance(cfg.kd_scale, dict):
+            self._kd_scale = torch.ones(self.num_envs, self._num_joints, device=self.device)
+            idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                cfg.kd_scale, self._joint_names, preserve_order=cfg.preserve_order
+            )
+            self._kd_scale[:, idx_list] = torch.tensor(val_list, device=self.device)
+        else:
+            raise ValueError(f"Unsupported kd_scale type: {type(cfg.kd_scale)}")
+
+
+       
+# ---------- Parse clip (solo pos; Kp/Kd usano i range) ----------
+        if self.cfg.pos_clip is not None:
+            if isinstance(cfg.pos_clip, dict):
+                # shape: [envs, joints, 2]
+                self._pos_clip = torch.tensor([[-float("inf"), float("inf")]], device=self.device).repeat(
+                    self.num_envs, self._num_joints, 1
+                )
+                idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                    self.cfg.pos_clip, self._joint_names, preserve_order=cfg.preserve_order
+                )
+                self._pos_clip[:, idx_list] = torch.tensor(val_list, device=self.device)
+            else:
+                raise ValueError(f"Unsupported pos_clip type: {type(cfg.pos_clip)}")
+        else:
+            self._pos_clip = None
+
+        # ---------- Parse Kp/Kd ranges ----------
+        # kp_range: (min,max) oppure dict per giunto -> (min,max)
+        self._kp_min = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+        self._kp_max = torch.ones(self.num_envs, self._num_joints, device=self.device)
+        if isinstance(cfg.kp_range, tuple) and len(cfg.kp_range) == 2:
+            self._kp_min[:] = cfg.kp_range[0]
+            self._kp_max[:] = cfg.kp_range[1]
+        elif isinstance(cfg.kp_range, dict):
+            idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                cfg.kp_range, self._joint_names, preserve_order=cfg.preserve_order
+            )
+            # val_list è una lista di (min,max)
+            mins = torch.tensor([v[0] for v in val_list], device=self.device)
+            maxs = torch.tensor([v[1] for v in val_list], device=self.device)
+            self._kp_min[:, idx_list] = mins
+            self._kp_max[:, idx_list] = maxs
+        else:
+            raise ValueError("kp_range must be a (min,max) tuple or a dict of joint-name -> (min,max)")
+
+        # kd_range: idem
+        self._kd_min = torch.zeros(self.num_envs, self._num_joints, device=self.device)
+        self._kd_max = torch.ones(self.num_envs, self._num_joints, device=self.device)
+        if isinstance(cfg.kd_range, tuple) and len(cfg.kd_range) == 2:
+            self._kd_min[:] = cfg.kd_range[0]
+            self._kd_max[:] = cfg.kd_range[1]
+        elif isinstance(cfg.kd_range, dict):
+            idx_list, _, val_list = string_utils.resolve_matching_names_values(
+                cfg.kd_range, self._joint_names, preserve_order=cfg.preserve_order
+            )
+            mins = torch.tensor([v[0] for v in val_list], device=self.device)
+            maxs = torch.tensor([v[1] for v in val_list], device=self.device)
+            self._kd_min[:, idx_list] = mins
+            self._kd_max[:, idx_list] = maxs
+        else:
+            raise ValueError("kd_range must be a (min,max) tuple or a dict of joint-name -> (min,max)")
+
+    """
+    Properties.
+    """
+
+    
+    @property
+    def action_dim(self) -> int:
+        return self._action_dim
+
+    @property
+    def raw_actions(self) -> torch.Tensor:
+        return self._raw_actions
+
+    @property
+    def processed_actions(self) -> torch.Tensor:
+        return self._processed_actions
+
+    @property
+    def IO_descriptor(self) -> GenericActionIODescriptor:
+        """The IO descriptor of the action term.
+
+        This descriptor is used to describe the action term of the joint position to limits action.
+        It adds the following information to the base descriptor:
+        - joint_names: The names of the joints.
+        - scale: The scale of the action term.
+        - offset: The offset of the action term.
+        - clip: The clip of the action term.
+
+        Returns:
+            The IO descriptor of the action term.
+        """
+        super().IO_descriptor
+        self._IO_descriptor.shape = (self.action_dim,)
+        self._IO_descriptor.dtype = str(self.raw_actions.dtype)
+        self._IO_descriptor.action_type = "JointAction"
+        self._IO_descriptor.joint_names = self._joint_names
+        self._IO_descriptor.scale = self._pos_scale
+        # This seems to be always [4xNum_joints] IDK why. Need to check.
+        if isinstance(self._offset, torch.Tensor):
+            self._IO_descriptor.offset = self._offset[0].detach().cpu().numpy().tolist()
+        else:
+            self._IO_descriptor.offset = self._offset
+        if self.cfg.clip is not None:
+            self._IO_descriptor.clip = self._clip
+        else:
+            self._IO_descriptor.clip = None
+     
+        # metadati dei range di Kp/Kd
+        self._IO_descriptor.kp_range = (self._kp_min[0].detach().cpu().tolist(),
+                                        self._kp_max[0].detach().cpu().tolist())
+        self._IO_descriptor.kd_range = (self._kd_min[0].detach().cpu().tolist(),
+                                        self._kd_max[0].detach().cpu().tolist())
+
+
+        return self._IO_descriptor
+
+    """
+    Operations.
+    """
+
+    def process_actions(self, actions: torch.Tensor):
+        
+        # store raw
+        self._raw_actions[:] = actions
+
+        # split: [pos, kp, kd]
+        N = self._num_joints
+        pos_in = actions[:, :N]
+        kp_in  = actions[:, N:2*N]
+        kd_in  = actions[:, 2*N:3*N]
+
+        # --- POS ---
+        pos = pos_in * self._pos_scale
+        if self._pos_clip is not None:
+            pos = torch.clamp(pos, min=self._pos_clip[:, :, 0], max=self._pos_clip[:, :, 1])
+        if self.cfg.rescale_to_limits:
+            pos = pos.clamp(-1.0, 1.0)
+            pos = math_utils.unscale_transform(
+                pos,
+                self._asset.data.soft_joint_pos_limits[:, self._joint_ids, 0],
+                self._asset.data.soft_joint_pos_limits[:, self._joint_ids, 1],
+            )
+        self._processed_actions[:] = pos
+
+        # --- Kp ---
+        kp = kp_in * (self._kp_scale if isinstance(self._kp_scale, float) else self._kp_scale)
+        kp = kp.clamp(-1.0, 1.0)
+        kp = math_utils.unscale_transform(kp, self._kp_min, self._kp_max)
+        self._kp_targets[:] = kp
+
+        # --- Kd ---
+        kd = kd_in * (self._kd_scale if isinstance(self._kd_scale, float) else self._kd_scale)
+        kd = kd.clamp(-1.0, 1.0)
+        kd = math_utils.unscale_transform(kd, self._kd_min, self._kd_max)
+        self._kd_targets[:] = kd
+
+    
+    def apply_actions(self):
+        # posizione
+        self._asset.set_joint_position_target(self._processed_actions, joint_ids=self._joint_ids)
+        self._asset.write_joint_stiffness_to_sim(
+                        self._kp_targets, joint_ids=self._joint_ids, env_ids=None
+                    )
+        self._asset.write_joint_damping_to_sim(
+                        self._kd_targets, joint_ids=self._joint_ids, env_ids=None
+                    )
+
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        self._raw_actions[env_ids] = 0.0
+
+
 class EMAJointPositionToLimitsAction(JointPositionToLimitsAction):
     r"""Joint action term that applies exponential moving average (EMA) over the processed actions as the
     articulation's joints position commands.

@@ -8,7 +8,7 @@ from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.envs import ManagerBasedRLEnvCfg, ManagerBasedPaperRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -112,6 +112,65 @@ class ActionsCfg:
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
 
 
+# @configclass
+# class paper_ActionsCfg:
+#     """Action specifications for the MDP."""
+
+#     joint_pos = mdp.JointPositionToLimitActionCfg(asset_name="robot", joint_names=[".*"], scale=1.0, use_default_offset=True) # scale was 0.5
+
+
+@configclass
+class paper_ActionsCfg:
+    """Action specifications for the MDP."""
+    joint_pos_and_gains = mdp.JointPositionAndGainsActionCfg(
+        asset_name="robot",
+        joint_names=[".*"],
+        # target di posizione normalizzati: 0.5 come facevi prima
+        pos_scale=1.0,
+        rescale_to_limits=True,
+        # range dei guadagni (esempio realistico, adattalo al tuo robot)
+        kp_range=(20.0, 220.0),
+        kd_range=(0.0, 15.0),
+        # kp_range={
+        #     r".*hip_pitch.*": (100.0,300.0),            
+        #     r".*torso*": (100.0, 300.0),
+        #     r".*knee.*": (100.0, 300.0),
+        #     r".*hip_roll.*": (75.0, 225.0),
+        #     r".*hip_yaw.*": (75.0, 225.0),
+        #     r".*shoulder_.*": (20.0, 60.0),
+        #     r".*ankle.*": (10.0, 30.0),
+        #     r".*elbow.*": (20.0, 60.0),
+        #     r".*one.*": (20.0, 60.0),
+        #     r".*two.*": (20.0, 60.0),
+        #     r".*three.*": (20.0, 60.0),
+        #     r".*four.*": (20.0, 60.0),
+        #     r".*five.*": (20.0, 60.0),
+        #     r".*six.*": (20.0, 60.0)
+        # },
+        # kd_range={
+        #     r".*hip_pitch.*": (0.0,10.0),            
+        #     r".*torso*": (0.0, 10.0),
+        #     r".*knee.*": (0.0, 10.0),
+        #     r".*hip_roll.*": (0.0, 10.0),
+        #     r".*hip_yaw.*": (0.0, 10.0),
+        #     r".*shoulder_.*": (5.0, 15.0),
+        #     r".*ankle.*": (0.0, 5.0),
+        #     r".*elbow.*": (5.0, 15.0),
+        #     r".*one.*": (5.0, 15.0),
+        #     r".*two.*": (5.0, 15.0),
+        #     r".*three.*": (5.0, 15.0),
+        #     r".*four.*": (5.0, 15.0),
+        #     r".*five.*": (5.0, 15.0),
+        #     r".*six.*": (5.0, 15.0)
+        # },
+
+        # opzionale: scaling sugli input Kp/Kd della policy (di default 1.0)
+        kp_scale=1.0,
+        kd_scale=1.0,
+        preserve_order=False,
+    )
+
+
 @configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
@@ -141,8 +200,28 @@ class ObservationsCfg:
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
-
+    
     # observation groups
+    policy: PolicyCfg = PolicyCfg()
+
+@configclass
+class paper_ObservationsCfg:
+    """Observation specifications for the MDP."""
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Observations for policy group."""
+
+        # observation terms (order preserved)
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        p = ObsTerm(func=mdp.p_clock_input)
+        r = ObsTerm(func=mdp.r_clock_input)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
     policy: PolicyCfg = PolicyCfg()
 
 
@@ -337,14 +416,14 @@ class LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
                 self.scene.terrain.terrain_generator.curriculum = False
 
 @configclass
-class paper_LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
+class paper_LocomotionVelocityRoughEnvCfg(ManagerBasedPaperRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
     scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
     # Basic settings
-    observations: ObservationsCfg = ObservationsCfg()
-    actions: ActionsCfg = ActionsCfg()
+    observations: paper_ObservationsCfg = paper_ObservationsCfg()
+    actions: paper_ActionsCfg = paper_ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: paper_RewardsCfg = paper_RewardsCfg()

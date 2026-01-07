@@ -1,0 +1,124 @@
+
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers
+# SPDX-License-Identifier: BSD-3-Clause
+
+seed: 42
+
+# Modelli (usano l'instantiator di skrl) — policy (stocastica) + value (deterministica)
+# https://skrl.readthedocs.io/en/latest/api/utils/model_instantiators.html
+models:
+  separate: False
+
+  # === POLICY: Gaussian (azioni continue) con LSTM ===
+  policy:
+    class: GaussianMixin
+    clip_actions: False
+    clip_log_std: True
+    min_log_std: -20.0
+    max_log_std: 2.0
+    initial_log_std: 0.0
+
+    # --- Specifica RNN per PPO_RNN (obbligatoria per il sampling di sequenze) ---
+    # sequence_length: lunghezza delle sequenze contigue usate nei mini-batch
+    # sizes: dimensioni degli stati iniziali (LSTM => hidden e cell):
+    #        (num_layers, D, hidden_size) con D=1 (non bidirezionale)
+    rnn:
+      type: lstm                         # informativo per il model-instantiator
+      sequence_length: 300               # fino a 300 step per traiettoria
+      sizes:
+        - [2, 1, 128]                    # hidden state: 2 layer × 128
+        - [2, 1, 128]                    # cell state:   2 layer × 128
+
+    # --- Rete ricorrente + testa lineare ---
+    # Nota: la sintassi "layers"/"recurrent" dipende dal tuo instantiator.
+    # Se il tuo parse supporta dizionari di layer, usa 'recurrent' come sotto;
+    # altrimenti lasciare a carico del costruttore del modello.
+    network:
+      - name: net
+        input: OBSERVATIONS
+        recurrent:
+          module: lstm                   # modulo ricorrente
+          hidden_size: 128
+          num_layers: 2
+          batch_first: True
+        # eventuali layer densi dopo l'LSTM (opzionali):
+        layers: [128]
+        activations: elu
+        output: ACTIONS
+
+  # === VALUE: Critic deterministico (puoi tenerlo feed-forward oppure LSTM) ===
+  value:
+    class: DeterministicMixin
+    clip_actions: False
+
+    # Se vuoi critic LSTM, abilita la rnn spec anche qui (opzionale):
+    rnn:
+      type: lstm
+      sequence_length: 300
+      sizes:
+        - [2, 1, 128]
+        - [2, 1, 128]
+
+    network:
+      - name: net
+        input: OBSERVATIONS
+        recurrent:
+          module: lstm
+          hidden_size: 128
+          num_layers: 2
+          batch_first: True
+        layers: [128]
+        activations: elu
+        output: ONE
+
+# Memoria: capacità totale (on-policy rollout buffer)
+# https://skrl.readthedocs.io/en/latest/api/memories/random.html
+memory:
+  class: RandomMemory
+  memory_size: 50000        # capacità richiesta (campioni); non è "replay" off-policy
+
+# Agente PPO_RNN (campiona sequenze contigue di length=sequence_length)
+# https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
+agent:
+  class: PPO_RNN            # <-- versione ricorrente di PPO
+  rollouts: 300             # passi per env prima dell'update (imposta num_envs=32 per 32×300)
+  learning_epochs: 4        # epoche per iterazione
+  mini_batches: 1           # facoltativo: processa l'intero batch per epoca
+  discount_factor: 0.99
+  lambda: 0.95
+
+  learning_rate: 1.0e-4     # LR condiviso per policy + value (entrambi a 1e-4)
+  learning_rate_scheduler: null
+  learning_rate_scheduler_kwargs: null
+
+  state_preprocessor: null
+  state_preprocessor_kwargs: null
+  value_preprocessor: null
+  value_preprocessor_kwargs: null
+
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 1.0
+  ratio_clip: 0.2
+  value_clip: 0.2
+  clip_predicted_values: True
+  entropy_loss_scale: 0.0
+  value_loss_scale: 1.0
+  kl_threshold: 0.0
+
+  rewards_shaper_scale: 1.0
+  time_limit_bootstrap: False
+
+# Logging / checkpoint
+experiment:
+  directory: "g1_recurrent"
+  experiment_name: ""
+  write_interval: auto
+  checkpoint_interval: auto
+
+# Trainer sequenziale
+# https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
+trainer:
+  class: SequentialTrainer
+  timesteps: 1000000
+  environment_info: log

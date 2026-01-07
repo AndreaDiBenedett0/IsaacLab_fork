@@ -136,6 +136,35 @@ class JointPositionToLimitsActionCfg(ActionTermCfg):
 
 
 @configclass
+class JointPositionAndGainsActionCfg(ActionTermCfg):
+    """Configuration for the bounded joint position action term.
+
+    See :class:`JointPositionToLimitsAction` for more details.
+    """
+
+    class_type: type[ActionTerm] = joint_actions_to_limits.JointPositionAndGainsAction
+
+    # mapping ai giunti
+    joint_names: list[str] = MISSING
+    preserve_order: bool = False
+
+    # scaling e clip per la parte pos
+    pos_scale: float | dict[str, float] = 1.0
+    pos_clip: dict[str, tuple[float, float]] | None = None  # come le altre azioni, opzionale
+    rescale_to_limits: bool = True
+
+    # scaling per i guadagni (normalizzazione dell'input prima del remap ai range)
+    kp_scale: float | dict[str, float] = 1.0
+    kd_scale: float | dict[str, float] = 1.0
+
+    # range dei guadagni per rimappare [-1, 1] -> [min, max]
+    # accetta tuple globali o dict per giunto -> (min, max)
+    kp_range: tuple[float, float] | dict[str, tuple[float, float]] = (0.0, 100.0)
+    kd_range: tuple[float, float] | dict[str, tuple[float, float]] = (0.0, 10.0)
+
+
+
+@configclass
 class EMAJointPositionToLimitsActionCfg(JointPositionToLimitsActionCfg):
     """Configuration for the exponential moving average (EMA) joint position action term.
 

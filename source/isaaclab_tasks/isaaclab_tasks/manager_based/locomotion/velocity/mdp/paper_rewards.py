@@ -15,23 +15,34 @@ from typing import TYPE_CHECKING
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.assets import Articulation
+from isaaclab.assets import Articulation,RigidObject
 from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-def heading_quat_from_vel_t(vx, vy, eps=1e-4):
-    speed = torch.sqrt(vx*vx + vy*vy)
-    # mask per deadzone
-    mask = (speed >= eps)
-    yaw = torch.atan2(vy, vx)
+# def heading_quat_from_vel_t(vx, vy, eps=1e-4):
+#     speed = torch.sqrt(vx*vx + vy*vy)
+#     # mask per deadzone
+#     mask = (speed >= eps)
+#     yaw = torch.atan2(vy, vx)
+#     half = 0.5 * yaw
+#     q_des = torch.stack([torch.cos(half), torch.zeros_like(half), torch.zeros_like(half), torch.sin(half)], dim=-1)
+#     # dove speed<eps, metti None/skip: qui mettiamo NaN e gestiamo a valle
+#     q_des = torch.where(mask.unsqueeze(-1), q_des, torch.tensor(float('nan'), device=q_des.device, dtype=q_des.dtype))
+#     return q_des, mask
+
+
+def quat_normalize(q):
+    return q / torch.linalg.norm(q, dim=-1, keepdim=True).clamp_min(1e-12)
+
+def yaw_to_quat(yaw):
     half = 0.5 * yaw
-    q_des = torch.stack([torch.cos(half), torch.zeros_like(half), torch.zeros_like(half), torch.sin(half)], dim=-1)
-    # dove speed<eps, metti None/skip: qui mettiamo NaN e gestiamo a valle
-    q_des = torch.where(mask.unsqueeze(-1), q_des, torch.tensor(float('nan'), device=q_des.device, dtype=q_des.dtype))
-    return q_des, mask
+    c = torch.cos(half)
+    s = torch.sin(half)
+    return torch.stack([c, torch.zeros_like(c), torch.zeros_like(c), s], dim=-1)
+
 
 
 # normaliztion function to the exp kernel
@@ -72,12 +83,12 @@ def normalize(type_of_quantity, quantity):
 
 
 # foot reward
-def foot_reward(env: ManagerBasedRLEnv, phi: torch.Tensor, offset: float, 
+def foot_reward(env: ManagerBasedRLEnv, 
                 asset_cfg: SceneEntityCfg,
                 sensor_cfg: SceneEntityCfg,
                 foot: str) -> torch.Tensor:
     
-    phi = (phi + offset) % 1.0                  # col modulo faccio in pratica un wraparound per rimanere nell'intervallo [0,1]
+    # phi = (phi + offset) % 1.0                  # col modulo faccio in pratica un wraparound per rimanere nell'intervallo [0,1]
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]        # [num_envs, history_len, num_selected_bodies, 3]. these are normal contact forces in world frame
@@ -90,11 +101,11 @@ def foot_reward(env: ManagerBasedRLEnv, phi: torch.Tensor, offset: float,
     # swing = indicator_von_mises(phi, swing_start, swing_end)
     # stance = indicator_von_mises(phi, stance_start, stance_end)
     if foot == "right_foot":
-        swing = env.cfg.Von_Mises_Values_right[float(phi) ][0]    # get swing value from precomputed dict
-        stance = env.cfg.Von_Mises_Values_right[float(phi) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        swing = env.Von_Mises_Values_right[float(env.phi_right) ][0]    # get swing value from precomputed dict
+        stance = env.Von_Mises_Values_right[float(env.phi_right) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
     else:   # left_foot
-        swing = env.cfg.Von_Mises_Values_left[float(phi) ][0]    # get swing value from precomputed dict
-        stance = env.cfg.Von_Mises_Values_left[float(phi) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        swing = env.Von_Mises_Values_left[float(env.phi_left) ][0]    # get swing value from precomputed dict
+        stance = env.Von_Mises_Values_left[float(env.phi_left) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
     
     return ((0 * stance * normalized_force) 
           + ((-1) * swing * normalized_force) 
@@ -113,28 +124,33 @@ def bipedal_reward(env: ManagerBasedRLEnv,
     # current_time_s = env.episode_length_buf.unsqueeze(1) * env.step_dt  ### prova anche time.time, o env.sim_time ###
     # phi = (current_time_s % period) / period  # phase in [0, 1]
 
-    phi = (env.episode_length_buf % env.cfg.L) / env.cfg.L  # è come versione col tempo in secondi ma ragionando in step di simulazione, invece che il periodo in sec ho L he è il numero di tep che formano 1 periodo
+    # phi = (env.episode_length_buf % env.cfg.L) / env.cfg.L  # è come versione col tempo in secondi ma ragionando in step di simulazione, invece che il periodo in sec ho L he è il numero di tep che formano 1 periodo
     ### fai print di phi per vedere che va da 0 a 1 ogni L step ###
     
     # swing_start, swing_end = 0.0, ratio
     # stance_start, stance_end = ratio, 1.0
 
-    reward_left = foot_reward(env, phi, env.cfg.left_offset, 
-                              left_foot_cfg, left_foot_sensor_cfg, "left_foot")
-    reward_right = foot_reward(env, phi, env.cfg.right_offset, 
-                               right_foot_cfg, right_foot_sensor_cfg, "right_foot")
+    reward_left = foot_reward(env, left_foot_cfg, left_foot_sensor_cfg, "left_foot")
+    reward_right = foot_reward(env, right_foot_cfg, right_foot_sensor_cfg, "right_foot")
 
     return reward_left + reward_right
     
 
 # cmd reward
 def cmd_reward(env: ManagerBasedRLEnv, command_name: str,
-               asset_cfg: SceneEntityCfg) -> torch.Tensor:
+               asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Reward function for tracking commanded quantities."""  # pelvis lin x and y vel and pelvis orientation (quaternion)
     # extract the used quantities 
     asset = env.scene[asset_cfg.name]
-    lin_root_vel_x_error = env.command_manager.get_command(command_name)[:, 0] - asset.data.body_lin_vel_w[:, asset_cfg.body_ids, 0]
-    lin_root_vel_y_error = env.command_manager.get_command(command_name)[:, 1] - asset.data.body_lin_vel_w[:, asset_cfg.body_ids, 1]
+    asset_ob: RigidObject = env.scene[asset_cfg.name]
+
+    vx = env.command_manager.get_command(command_name)[:, 0]
+    vy = env.command_manager.get_command(command_name)[:, 1]
+
+    lin_root_vel_x_error = vx - asset.data.root_lin_vel_b[:, 0]              # in local frame
+    lin_root_vel_y_error = vy - asset.data.root_lin_vel_b[:, 1]
+
+    # --- Orientazione (quaternioni [w, x, y, z]) ---
     q_actual = asset.data.root_quat_w                               
     q_actual = torch.nn.functional.normalize(q_actual, p=2, dim=-1)
     # q_des la derivo da i comandi di vel x e y nel frame del robot e poi la devo trasformare in quaternione relativo al world frame
@@ -142,22 +158,34 @@ def cmd_reward(env: ManagerBasedRLEnv, command_name: str,
     # q_des = torch.tensor([1.0, 0.0, 0.0, 0.0],
     #                      device=q_actual.device, dtype=q_actual.dtype)
     #oppure calcolata da comandi vel x e y
-    vx = env.command_manager.get_command(command_name)[:, 0]
-    vy = env.command_manager.get_command(command_name)[:, 1]
-    q_des_r, mask = heading_quat_from_vel_t(vx, vy)
-    # from local to global frame
-    q_des =  qua
-    # per evitare NaN, metti identità dove la velocità è troppo bassa  ### ha sneso? ###
-    q_des = torch.where(mask.unsqueeze(-1), q_des, torch.tensor([1.0, 0.0, 0.0, 0.0], device=q_des.device, dtype=q_des.dtype))
+    # yaw_quat funz gia implementata che estrae la componente di yaw da un quaternione
     
-    q_des = q_des.expand_as(q_actual)
+
+    heading = asset_ob.data.heading_w  # Yaw heading of the base frame (in radians). Shape is (num_instances,)  (estraggo yaw del robot nel world frame)
+    
+    phi_body = torch.atan2(vy, vx)  # direzione del comando nel frame corpo
+    speed2 = vx*vx + vy*vy
+
+    # world yaw della risultante
+    eps = 1e-8
+    phi_world = torch.where(speed2 >= eps, heading + phi_body, heading) # dove la vel è maggiore di eps uso heading + phi_body, altrimenti heading (per evitare NaN quando la velocità è troppo bassa)
+
+    q_des = yaw_to_quat(phi_world)
+    # q_des = quat_normalize(q)
+
+    mask = (speed2 >= eps)
+    
+    # # per evitare NaN, metti identità dove la velocità è troppo bassa  ### ha sneso? ###
+    # q_des = torch.where(mask.unsqueeze(-1), q_des, torch.tensor([1.0, 0.0, 0.0, 0.0], device=q_des.device, dtype=q_des.dtype))
+    
+    # q_des = q_des.expand_as(q_actual)
     dot = (q_actual * q_des).sum(dim=-1)
-    dot = torch.clamp(dot, -1.0, 1.0)
+    # dot = torch.clamp(dot, -1.0, 1.0)
 
     q_dot_x = normalize("dot_x", lin_root_vel_x_error)
     q_dot_y = normalize("dot_y", lin_root_vel_y_error)
     q_orientation = normalize("o", dot)
-    q_orientation = normalize("o", dot) * mask.float()   # se la velocità è troppo bassa, non considerare il reward di orientamento
+    q_orientation = q_orientation * mask.float()   # se la velocità è troppo bassa, non considerare il reward di orientamento
 
     return -(q_dot_x + q_dot_y + q_orientation)
 

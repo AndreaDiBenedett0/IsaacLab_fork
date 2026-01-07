@@ -687,3 +687,26 @@ def current_time_s(env: ManagerBasedRLEnv) -> torch.Tensor:
 def remaining_time_s(env: ManagerBasedRLEnv) -> torch.Tensor:
     """The maximum time remaining in the episode (in seconds)."""
     return env.max_episode_length_s - env.episode_length_buf.unsqueeze(1) * env.step_dt
+
+
+def p_clock_input(env: ManagerBasedRLEnv) -> torch.Tensor:
+    # tensor shape: (num_envs, 2)
+    p = torch.stack(
+    [
+        torch.sin((2.0 * torch.pi * env.phi_right) / env.L),
+        torch.sin((2.0 * torch.pi * env.phi_left) / env.L),
+    ],
+    dim=1,
+    )
+    return p
+
+def r_clock_input(env: ManagerBasedRLEnv) -> torch.Tensor:
+    # tensor shape: (num_envs, 2)
+    r = torch.stack(
+    [
+        torch.full((env.num_envs, 1), env.ratio, device=env.device, dtype=torch.float32),
+        torch.full((env.num_envs, 1), 1-env.ratio, device=env.device, dtype=torch.float32)
+    ],
+    dim=1,
+    )
+    return r
