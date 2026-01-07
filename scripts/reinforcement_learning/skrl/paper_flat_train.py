@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 
 # import the skrl components to build the RL system
-from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
+from skrl.agents.torch.ppo import PPO_DEFAULT_CONFIG
+from skrl.agents.torch.ppo import PPO_RNN as PPO
 from skrl.envs.loaders.torch import load_isaaclab_env
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
@@ -21,7 +22,7 @@ set_seed()  # e.g. `set_seed(42)` for fixed seed
 class Policy(GaussianMixin, Model):
     def __init__(self, observation_space, action_space, device, clip_actions=True,  # era False
                  clip_log_std=True, min_log_std=-20, max_log_std=2, reduction="sum",
-                 num_envs=4096, num_layers=2, hidden_size=128, sequence_length=300):
+                 num_envs=200, num_layers=2, hidden_size=128, sequence_length=300):
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
 
@@ -99,7 +100,7 @@ class Policy(GaussianMixin, Model):
 
 class Value(DeterministicMixin, Model):
     def __init__(self, observation_space, action_space, device, clip_actions=True,   # era False
-                 num_envs=4096, num_layers=2, hidden_size=128, sequence_length=300):
+                 num_envs=200, num_layers=2, hidden_size=128, sequence_length=300):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
@@ -166,7 +167,7 @@ class Value(DeterministicMixin, Model):
     
 
 env = load_isaaclab_env(task_name="Isaac-Velocity-PaperFlat-G1-v0",
-                        num_envs=4096,
+                        num_envs=200,
                         headless=True)
 env = wrap_env(env)
 device = env.device
@@ -213,8 +214,8 @@ cfg["experiment"]["directory"] = "runs/torch/PendulumNoVel"
 agent = PPO(models=models,
             memory=memory,
             cfg=cfg,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
+            observation_space=env.single_observation_space,
+            action_space=env.single_action_space,
             device=device)
 
 

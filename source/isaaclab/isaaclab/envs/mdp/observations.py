@@ -22,7 +22,7 @@ from isaaclab.managers.manager_term_cfg import ObservationTermCfg
 from isaaclab.sensors import Camera, Imu, RayCaster, RayCasterCamera, TiledCamera
 
 if TYPE_CHECKING:
-    from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
+    from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv, ManagerBasedPaperRLEnvCfg
 
 from isaaclab.envs.utils.io_descriptors import (
     generic_io_descriptor,
@@ -689,7 +689,7 @@ def remaining_time_s(env: ManagerBasedRLEnv) -> torch.Tensor:
     return env.max_episode_length_s - env.episode_length_buf.unsqueeze(1) * env.step_dt
 
 
-def p_clock_input(env: ManagerBasedRLEnv) -> torch.Tensor:
+def p_clock_input(env: ManagerBasedPaperRLEnv) -> torch.Tensor:
     # tensor shape: (num_envs, 2)
     p = torch.stack(
     [
@@ -701,12 +701,7 @@ def p_clock_input(env: ManagerBasedRLEnv) -> torch.Tensor:
     return p
 
 def r_clock_input(env: ManagerBasedRLEnv) -> torch.Tensor:
-    # tensor shape: (num_envs, 2)
-    r = torch.stack(
-    [
-        torch.full((env.num_envs, 1), env.ratio, device=env.device, dtype=torch.float32),
-        torch.full((env.num_envs, 1), 1-env.ratio, device=env.device, dtype=torch.float32)
-    ],
-    dim=1,
-    )
-    return r
+    # crea tensori 1D (num_envs,) e poi stack lungo dim=1 -> (num_envs, 2)
+    r = torch.full((env.num_envs,), env.ratio, device=env.device, dtype=torch.float32)
+    r_comp  = torch.full((env.num_envs,), 1.0 - env.ratio, device=env.device, dtype=torch.float32)
+    return torch.stack([r, r_comp], dim=1)

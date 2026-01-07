@@ -517,6 +517,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
         self.episode_length_buf = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device, dtype=torch.long)
 
+        self.phi_right = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device)
+        self.phi_left = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device)
+
         # initialize the base class to setup the scene.
         super().__init__(cfg=cfg)
         # store the render mode

@@ -61,10 +61,21 @@ gym.register(
 
 gym.register(
     id="Isaac-Velocity-PaperFlat-G1-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point="isaaclab.envs:ManagerBasedPaperRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.paper_flat_env_cfg:G1FlatEnvCfg_PAPER",
+        "env_cfg_entry_point": f"{__name__}.paper_flat_env_cfg:paper_G1FlatEnvCfg",
+        # "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1FlatPPORunnerCfg",
+        # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Isaac-Velocity-PaperFlat-G1-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedPaperRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.paper_flat_env_cfg:paper_G1FlatEnvCfg_PLAY",
         # "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1FlatPPORunnerCfg",
         # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
     },
@@ -73,10 +84,21 @@ gym.register(
 
 gym.register(
     id="Isaac-Velocity-PaperRough-G1-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point="isaaclab.envs:ManagerBasedPaperRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.paper_rough_env_cfg:G1RoughEnvCfg_PAPER",
+        "env_cfg_entry_point": f"{__name__}.paper_rough_env_cfg:paper_G1RoughEnvCfg",
+        # "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1FlatPPORunnerCfg",
+        # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Isaac-Velocity-PaperRough-G1-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedPaperRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.paper_rough_env_cfg:paper_G1RoughEnvCfg_PLAY",
         # "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:G1FlatPPORunnerCfg",
         # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
     },

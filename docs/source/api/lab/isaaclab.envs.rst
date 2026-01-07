@@ -18,6 +18,8 @@
     ManagerBasedEnvCfg
     ManagerBasedRLEnv
     ManagerBasedRLEnvCfg
+    ManagerBasedPaperRLEnv
+    ManagerBasedPaperRLEnvCfg
     DirectRLEnv
     DirectRLEnvCfg
     DirectMARLEnv
