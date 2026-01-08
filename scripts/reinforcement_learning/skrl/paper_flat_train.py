@@ -227,3 +227,6 @@ trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
 trainer.train()
 
 env.close()
+
+
+# source _isaac_sim/setup_conda_env.sh

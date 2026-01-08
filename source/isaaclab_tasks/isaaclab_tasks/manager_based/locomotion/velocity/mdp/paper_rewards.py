@@ -101,12 +101,22 @@ def foot_reward(env: ManagerBasedRLEnv,
     # swing = indicator_von_mises(phi, swing_start, swing_end)
     # stance = indicator_von_mises(phi, stance_start, stance_end)
     if foot == "right_foot":
-        swing = env.Von_Mises_Values_right[float(env.phi_right) ][0]    # get swing value from precomputed dict
-        stance = env.Von_Mises_Values_right[float(env.phi_right) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        # swing = env.Von_Mises_Values_right[float(env.phi_right) ][0]    # get swing value from precomputed dict
+        # stance = env.Von_Mises_Values_right[float(env.phi_right) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        idx = env.idx_right
+        table = env.VM_right
+
     else:   # left_foot
-        swing = env.Von_Mises_Values_left[float(env.phi_left) ][0]    # get swing value from precomputed dict
-        stance = env.Von_Mises_Values_left[float(env.phi_left) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        # swing = env.Von_Mises_Values_left[float(env.phi_left) ][0]    # get swing value from precomputed dict
+        # stance = env.Von_Mises_Values_left[float(env.phi_left) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
+        idx = env.idx_left
+        table = env.VM_left
     
+    # Estrai swing e stance per ogni env -> (num_envs,)
+    # colonna 0 = swing, colonna 1 = stance
+    swing  = table[idx, 0]
+    stance = table[idx, 1]
+
     return ((0 * stance * normalized_force) 
           + ((-1) * swing * normalized_force) 
           + ((-1) * stance * normalized_speed)

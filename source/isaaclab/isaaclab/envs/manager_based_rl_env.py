@@ -25,21 +25,21 @@ from .manager_based_rl_env_cfg import ManagerBasedRLEnvCfg
 import numpy as np
 from scipy.stats import vonmises
 
-def compute_von_mises_values(self, offset: float = 0.0) -> dict:
+def compute_von_mises_values(env, offset: float = 0.0) -> dict:
     """Compute the Von Mises values for a given number of discrete timesteps L."""
     # 1) Fase normalizzata e in radianti
-    phi = np.linspace(0.0, 1.0, self.L, endpoint=False)
+    phi = np.linspace(0.0, 1.0, env.L, endpoint=False)
     phi = (phi + offset) % 1.0  # apply offset
 
     phi_rad = phi * (2.0 * np.pi)
 
     # 2) Boundaries in radianti
-    start_rad_swing = (2.0 * np.pi) * float(self.swing_start)
-    end_rad_swing   = (2.0 * np.pi) * float(self.swing_end)
-    start_rad_stance= (2.0 * np.pi) * float(self.stance_start)
-    end_rad_stance  = (2.0 * np.pi) * float(self.stance_end)
+    start_rad_swing = (2.0 * np.pi) * float(env.swing_start)
+    end_rad_swing   = (2.0 * np.pi) * float(env.swing_end)
+    start_rad_stance= (2.0 * np.pi) * float(env.stance_start)
+    end_rad_stance  = (2.0 * np.pi) * float(env.stance_end)
 
-    kappa = float(self.kappa)
+    kappa = float(env.kappa)
 
     # 3) “Finestre” smooth tramite differenza di CDF von Mises
     #    Nota: usiamo la CDF con "loc" settato ai rispettivi start/end.
@@ -77,6 +77,16 @@ def compute_von_mises_values(self, offset: float = 0.0) -> dict:
       for i in range(len(phi)) }
 
     return dict
+
+
+# Costruisci torch.Tensor (L, 2): [:,0]=swing, [:,1]=stance
+def _build_von_mises_table(env, offset: float) -> torch.Tensor:
+    vm = compute_von_mises_values(env, offset)   # <<-- restituisce il dict {phi: (swing,stance)}
+    # ordina per phi crescente e crea tensore su device sim
+    phis = sorted(vm.keys())
+    vals = [vm[phi] for phi in phis]              # lista di tuple (swing, stance)
+    return torch.tensor(vals, dtype=torch.float32, device=dev) # cfg.sim.device)  # shape (L, 2)
+
 
 
 class ManagerBasedRLEnv(ManagerBasedEnv, gym.Env):
@@ -511,17 +521,23 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.kappa = 45 # concentration parameter for Von Mises distribution
         self.right_offset = 0.5  # phase offset for the right leg
         self.left_offset = 0.0   # phase offset for the left leg
-        self.Von_Mises_Values_right = compute_von_mises_values(self, self.right_offset)     # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
-        self.Von_Mises_Values_left  = compute_von_mises_values(self, self.left_offset)      # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
-
-        # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
-        self.episode_length_buf = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device, dtype=torch.long)
-
-        self.phi_right = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device)
-        self.phi_left = torch.zeros(cfg.scene.num_envs, device=cfg.sim.device)
 
         # initialize the base class to setup the scene.
         super().__init__(cfg=cfg)
+
+        # self.Von_Mises_Values_right = compute_von_mises_values(self, self.right_offset)     # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
+        # self.Von_Mises_Values_left  = compute_von_mises_values(self, self.left_offset)      # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
+
+        self.VM_right = _build_von_mises_table(self, self.right_offset, device=self.device)  # (L, 2)
+        self.VM_left  = _build_von_mises_table(self, self.left_offset, device=self.device)   # (L, 2)
+
+        # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
+        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+
+        self.phi_right = torch.zeros(self.num_envs, device=self.device)
+        self.phi_left = torch.zeros(self.num_envs, device=self.device)
+
+
         # store the render mode
         self.render_mode = render_mode
 
@@ -649,6 +665,11 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.phi = (self.episode_length_buf % self.L) / self.L
         self.phi_right = (self.phi + self.right_offset) % 1.0 
         self.phi_left  = (self.phi + self.left_offset) % 1.0
+
+        # indici interi [0, L-1] per ogni env
+        self.idx_right = torch.clamp((self.phi_right * self.L).long(), 0, self.L - 1)  # (num_envs,)
+        self.idx_left  = torch.clamp((self.phi_left  * self.L).long(), 0, self.L - 1)  # (num_envs,)
+
         # -- check terminations
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
