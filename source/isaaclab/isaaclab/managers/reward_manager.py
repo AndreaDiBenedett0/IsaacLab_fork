@@ -147,6 +147,21 @@ class RewardManager(ManagerBase):
                 continue
             # compute term's value
             value = term_cfg.func(self._env, **term_cfg.params) * term_cfg.weight * dt
+
+
+        # # --- DEBUG: stampa info su ogni termine ---
+        #     try:
+        #         if torch.is_tensor(value):
+        #             print(f"[DEBUG][Reward] term='{name}' shape={tuple(value.shape)} "
+        #                 f"dtype={value.dtype} device={value.device} "
+        #                 f"min={float(value.min()) if value.numel() else 'n/a'} "
+        #                 f"max={float(value.max()) if value.numel() else 'n/a'}")
+        #         else:
+        #             print(f"[DEBUG][Reward] term='{name}' type={type(value)} value={value}")
+        #     except Exception as e:
+        #         print(f"[DEBUG][Reward] term='{name}' <error while printing>: {e}")
+        # # --- END DEBUG ---
+
             # update total reward
             self._reward_buf += value
             # update episodic sum

@@ -25,6 +25,17 @@ from .manager_based_rl_env_cfg import ManagerBasedRLEnvCfg
 import numpy as np
 from scipy.stats import vonmises
 
+
+def _print_obs_shape(obs):
+    if isinstance(obs, torch.Tensor):
+        print("[step] obs_buf (Tensor):", tuple(obs.shape))
+    elif isinstance(obs, dict):
+        shapes = {k: (tuple(v.shape) if isinstance(v, torch.Tensor) else type(v)) for k, v in obs.items()}
+        print("[step] obs_buf (Dict):", shapes)
+    else:
+        print("[step] obs_buf (Unknown):", type(obs))
+
+
 def compute_von_mises_values(env, offset: float = 0.0) -> dict:
     """Compute the Von Mises values for a given number of discrete timesteps L."""
     # 1) Fase normalizzata e in radianti
@@ -80,12 +91,12 @@ def compute_von_mises_values(env, offset: float = 0.0) -> dict:
 
 
 # Costruisci torch.Tensor (L, 2): [:,0]=swing, [:,1]=stance
-def _build_von_mises_table(env, offset: float) -> torch.Tensor:
+def _build_von_mises_table(env, offset: float, device: str) -> torch.Tensor:
     vm = compute_von_mises_values(env, offset)   # <<-- restituisce il dict {phi: (swing,stance)}
     # ordina per phi crescente e crea tensore su device sim
     phis = sorted(vm.keys())
     vals = [vm[phi] for phi in phis]              # lista di tuple (swing, stance)
-    return torch.tensor(vals, dtype=torch.float32, device=dev) # cfg.sim.device)  # shape (L, 2)
+    return torch.tensor(vals, dtype=torch.float32, device=device) # cfg.sim.device)  # shape (L, 2)
 
 
 
@@ -522,6 +533,18 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.right_offset = 0.5  # phase offset for the right leg
         self.left_offset = 0.0   # phase offset for the left leg
 
+        # Attenzione: self.device NON esiste ancora -> usare cfg.sim.device
+        dev = cfg.sim.device
+        num_envs = cfg.scene.num_envs
+
+        # Se qualche osservazione usa episode_length_buf in _prepare_terms, crealo già ora.
+        self.episode_length_buf = torch.zeros(num_envs, device=dev, dtype=torch.long)
+
+        # Fasi per clock
+        self.phi_right = torch.zeros(num_envs, device=dev)
+        self.phi_left  = torch.zeros(num_envs, device=dev)
+
+
         # initialize the base class to setup the scene.
         super().__init__(cfg=cfg)
 
@@ -531,11 +554,11 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.VM_right = _build_von_mises_table(self, self.right_offset, device=self.device)  # (L, 2)
         self.VM_left  = _build_von_mises_table(self, self.left_offset, device=self.device)   # (L, 2)
 
-        # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
-        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        # # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
+        # self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
-        self.phi_right = torch.zeros(self.num_envs, device=self.device)
-        self.phi_left = torch.zeros(self.num_envs, device=self.device)
+        # self.phi_right = torch.zeros(self.num_envs, device=self.device)
+        # self.phi_left = torch.zeros(self.num_envs, device=self.device)
 
 
         # store the render mode
@@ -676,7 +699,6 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.reset_time_outs = self.termination_manager.time_outs
         # -- reward computation
         self.reward_buf = self.reward_manager.compute(dt=self.step_dt)
-
         if len(self.recorder_manager.active_terms) > 0:
             # update observations for recording if needed
             self.obs_buf = self.observation_manager.compute()
@@ -706,6 +728,8 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # -- compute observations
         # note: done after reset to get the correct observations for reset envs
         self.obs_buf = self.observation_manager.compute(update_history=True)
+        # print("DEBUG[step] obs_buf:")
+        # _print_obs_shape(self.obs_buf)
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
@@ -808,6 +832,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
                     high = np.inf if term_cfg.clip is None else term_cfg.clip[1]
                     term_dict[term_name] = gym.spaces.Box(low=low, high=high, shape=term_dim)
                 self.single_observation_space[group_name] = gym.spaces.Dict(term_dict)
+        # print("DEBUG[_configure_gym_env_spaces] single_observation_space:", self.single_observation_space)
+
+
         # action space (unbounded since we don't impose any limits)
         action_dim = sum(self.action_manager.action_term_dim)
         self.single_action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(action_dim,))

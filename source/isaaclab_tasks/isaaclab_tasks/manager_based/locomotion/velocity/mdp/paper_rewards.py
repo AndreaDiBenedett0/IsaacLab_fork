@@ -120,7 +120,7 @@ def foot_reward(env: ManagerBasedRLEnv,
     return ((0 * stance * normalized_force) 
           + ((-1) * swing * normalized_force) 
           + ((-1) * stance * normalized_speed)
-          + (0 * swing * normalized_speed))
+          + (0 * swing * normalized_speed)).sum(dim=-1)  # sum over foot bodies
 
 # bipedal reward
 def bipedal_reward(env: ManagerBasedRLEnv, 
@@ -212,9 +212,33 @@ def smooth_reward(env: ManagerBasedRLEnv,
     torques = asset.data.applied_torque[:, asset_cfg.joint_ids]
     pelvis_acc = asset_root.data.body_ang_vel_w.norm(dim=-1) + asset_root.data.body_lin_acc_w.norm(dim=-1)  #POTRESTI AVRE PROBLEMA DI DIMENSIONI PERCHE HA DIM [ENV, 1, 1] E POTRESTI VOLERE SOLO [ENV, 1]
 
-    q_action_diff = normalize("ad", action_diff.norm(dim=1))
-    q_torques = normalize("t", torques.norm(dim=1))
-    q_pelvis_acc = normalize("pa", pelvis_acc)
+    # q_action_diff = normalize("ad", action_diff.norm(dim=1))
+    # q_torques = normalize("t", torques.norm(dim=1))
+    # q_pelvis_acc = normalize("pa", pelvis_acc)
+
+
+    # usa i body_ids (pelvis) dalla cfg
+    body_ids = asset_root_cfg.body_ids   # atteso: uno o pochi ID (per pelvis)
+
+    # Seleziona i body e poi norma sull'asse dei 3 componenti
+    pelvis_ang = asset_root.data.body_ang_vel_w[:, body_ids, :].norm(dim=-1)  # (N, B)
+    pelvis_lin = asset_root.data.body_lin_acc_w[:, body_ids, :].norm(dim=-1)  # (N, B)
+
+    # Riduci su i body (se B=1, .squeeze; se >1, usa .mean/.sum a tua scelta)
+    pelvis_acc = (pelvis_ang + pelvis_lin).mean(dim=1)        # -> (N,)
+    # In alternativa: .sum(dim=1) o pesi diversi per body
+
+    # Normalizza passando (N,1) e rientra a (N,)
+    q_action_diff = normalize("ad", action_diff.norm(dim=1, keepdim=True)).squeeze(1)  # (N,)
+    q_torques     = normalize("t",  torques.norm(dim=1,     keepdim=True)).squeeze(1)  # (N,)
+    q_pelvis_acc  = normalize("pa", pelvis_acc.unsqueeze(1)).squeeze(1)                # (N,)
+
+
+    # def _shape(x): return tuple(x.shape) if torch.is_tensor(x) else f"<{type(x)}>"
+    # print("[DEBUG] q_action_diff", _shape(q_action_diff))
+    # print("[DEBUG] q_torques    ", _shape(q_torques))
+    # print("[DEBUG] q_pelvis_acc ", _shape(q_pelvis_acc))
+
 
     return -(q_action_diff + q_torques + q_pelvis_acc)
 

@@ -218,6 +218,7 @@ class paper_ObservationsCfg:
         p = ObsTerm(func=mdp.p_clock_input)
         r = ObsTerm(func=mdp.r_clock_input)
 
+
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
