@@ -9,7 +9,7 @@ from tensordict import TensorDict
 
 from rsl_rl.env import VecEnv
 
-from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
+from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv, ManagerBasedPaperRLEnv
 
 
 class RslRlVecEnvWrapper(VecEnv):
@@ -39,7 +39,7 @@ class RslRlVecEnvWrapper(VecEnv):
         """
 
         # check that input is valid
-        if not isinstance(env.unwrapped, ManagerBasedRLEnv) and not isinstance(env.unwrapped, DirectRLEnv):
+        if not isinstance(env.unwrapped, ManagerBasedRLEnv) and not isinstance(env.unwrapped, DirectRLEnv) and not isinstance(env.unwrapped, ManagerBasedPaperRLEnv):
             raise ValueError(
                 "The environment must be inherited from ManagerBasedRLEnv or DirectRLEnv. Environment type:"
                 f" {type(env)}"

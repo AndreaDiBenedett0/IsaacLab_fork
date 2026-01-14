@@ -109,8 +109,6 @@ class ObservationManager(ManagerBase):
                     )
             else:
                 self._group_obs_dim[group_name] = group_term_dims
-        
-        print("Initialized Observation Manager dim:", group_term_dims)
 
         # Stores the latest observations.
         self._obs_buffer: dict[str, torch.Tensor | dict[str, torch.Tensor]] | None = None
