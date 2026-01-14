@@ -553,6 +553,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
 
         self.VM_right = _build_von_mises_table(self, self.right_offset, device=self.device)  # (L, 2)
         self.VM_left  = _build_von_mises_table(self, self.left_offset, device=self.device)   # (L, 2)
+        print("Von Mises tables built on device:")
+        print("VM_right :", self.VM_right)
+        print("VM_left :", self.VM_left)
 
         # # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
         # self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -688,10 +691,19 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.phi = (self.episode_length_buf % self.L) / self.L
         self.phi_right = (self.phi + self.right_offset) % 1.0 
         self.phi_left  = (self.phi + self.left_offset) % 1.0
+        # print("DEBUG[step] phi:      ", self.phi)
+        # print("DEBUG[step] phi_right:", self.phi_right)
+        # print("DEBUG[step] phi_left: ", self.phi_left)
 
         # indici interi [0, L-1] per ogni env
-        self.idx_right = torch.clamp((self.phi_right * self.L).long(), 0, self.L - 1)  # (num_envs,)
-        self.idx_left  = torch.clamp((self.phi_left  * self.L).long(), 0, self.L - 1)  # (num_envs,)
+        # self.idx_right = torch.clamp((self.phi_right * self.L).long(), 0, self.L - 1)  # (num_envs,)
+        # self.idx_left  = torch.clamp((self.phi_left  * self.L).long(), 0, self.L - 1)  # (num_envs,)
+
+        self.idx_right = torch.clamp(torch.round(self.phi_right * self.L).long(), 0, self.L - 1)
+        self.idx_left  = torch.clamp(torch.round(self.phi_left  * self.L).long(), 0, self.L - 1)
+
+        # print("DEBUG[step] idx_right:", self.idx_right)
+        # print("DEBUG[step] idx_left: ", self.idx_left)
 
         # -- check terminations
         self.reset_buf = self.termination_manager.compute()
@@ -732,6 +744,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # _print_obs_shape(self.obs_buf)
 
         # return observations, rewards, resets and extras
+        # print("DEBUG[step] reward_buf:", self.reward_buf)
+        # print("DEBUG[step] reset_terminated:", self.reset_terminated)
+        # print("DEBUG[step] reset_time_outs:", self.reset_time_outs)
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
     def render(self, recompute: bool = False) -> np.ndarray | None:
@@ -837,7 +852,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
 
         # action space (unbounded since we don't impose any limits)
         action_dim = sum(self.action_manager.action_term_dim)
-        self.single_action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(action_dim,))
+        self.single_action_space = gym.spaces.Box(low=-1, high=1, shape=(action_dim,))
 
         # batch the spaces for vectorized environments
         self.observation_space = gym.vector.utils.batch_space(self.single_observation_space, self.num_envs)

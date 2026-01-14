@@ -114,10 +114,20 @@ class paper_G1Rewards(paper_RewardsCfg):
                 "asset_root_cfg": SceneEntityCfg("robot", body_names="pelvis")},
     )
                 
-    # bias term
-    bias = RewTerm(
-        func=mdp.bias,
+    # # bias term
+    # bias = RewTerm(
+    #     func=mdp.bias,
+    #     weight=1.0 )
+
+    # is alive term
+    is_alive = RewTerm(
+        func=mdp.is_alive,
         weight=1.0 )
+
+    # termination penalty
+    termination_penalty = RewTerm(
+        func=mdp.is_terminated,
+        weight=-200.0 )
 
 @configclass
 class paper_G1RoughEnvCfg(paper_LocomotionVelocityRoughEnvCfg):

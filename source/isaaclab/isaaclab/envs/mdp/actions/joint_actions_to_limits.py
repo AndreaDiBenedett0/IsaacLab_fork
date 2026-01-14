@@ -328,6 +328,8 @@ class JointPositionAndGainsAction(ActionTerm):
             self._kd_max[:, idx_list] = maxs
         else:
             raise ValueError("kd_range must be a (min,max) tuple or a dict of joint-name -> (min,max)")
+        
+
 
     """
     Properties.
@@ -389,16 +391,21 @@ class JointPositionAndGainsAction(ActionTerm):
     Operations.
     """
 
-    def process_actions(self, actions: torch.Tensor):
-        
+    def process_actions(self, actions: torch.Tensor):        
         # store raw
         self._raw_actions[:] = actions
+
+        # print("[DEBUG]: JointPositionAndGainsAction: pos_clip =", self._pos_clip)
 
         # split: [pos, kp, kd]
         N = self._num_joints
         pos_in = actions[:, :N]
         kp_in  = actions[:, N:2*N]
         kd_in  = actions[:, 2*N:3*N]
+        # print("[DEBUG]: Raw input actions split into pos, Kp, Kd:")
+        # print("  Pos:", pos_in)
+        # print("  Kp:", kp_in)
+        # print("  Kd:", kd_in)
 
         # --- POS ---
         pos = pos_in * self._pos_scale
@@ -412,18 +419,22 @@ class JointPositionAndGainsAction(ActionTerm):
                 self._asset.data.soft_joint_pos_limits[:, self._joint_ids, 1],
             )
         self._processed_actions[:] = pos
+        # print("[DEBUG]: Processed target joint positions:", self._processed_actions)
 
         # --- Kp ---
         kp = kp_in * (self._kp_scale if isinstance(self._kp_scale, float) else self._kp_scale)
         kp = kp.clamp(-1.0, 1.0)
         kp = math_utils.unscale_transform(kp, self._kp_min, self._kp_max)
         self._kp_targets[:] = kp
+        # print("[DEBUG]: Processed Kp:", self._kp_targets)
 
         # --- Kd ---
         kd = kd_in * (self._kd_scale if isinstance(self._kd_scale, float) else self._kd_scale)
         kd = kd.clamp(-1.0, 1.0)
         kd = math_utils.unscale_transform(kd, self._kd_min, self._kd_max)
         self._kd_targets[:] = kd
+        # print("[DEBUG]: Processed Kd:", self._kd_targets)
+        # print("-----", ciao)
 
     
     def apply_actions(self):

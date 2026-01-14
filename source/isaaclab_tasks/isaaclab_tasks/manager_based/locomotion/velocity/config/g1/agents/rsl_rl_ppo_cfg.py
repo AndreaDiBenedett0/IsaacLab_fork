@@ -53,7 +53,7 @@ class G1FlatPPORunnerCfg(G1RoughPPORunnerCfg):
 
 @configclass
 class G1RoughPPORunnerPaperCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 300 # 24
     max_iterations = 3000
     save_interval = 50
     experiment_name = "g1_rough_paper"
@@ -62,20 +62,21 @@ class G1RoughPPORunnerPaperCfg(RslRlOnPolicyRunnerCfg):
         rnn_hidden_dim = 128,
         rnn_num_layers = 2,
         init_noise_std=1.0,
-        actor_obs_normalization=False,
-        critic_obs_normalization=False,
-        actor_hidden_dims=[128],
-        critic_hidden_dims=[128],
+        actor_obs_normalization=True,
+        critic_obs_normalization=True,
+        actor_hidden_dims=[64],
+        critic_hidden_dims=[64],
         activation="elu",
+        # last_activation="tanh",
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
         entropy_coef=0.008,
-        num_learning_epochs=5,
-        num_mini_batches=4,
-        learning_rate=1.0e-3,
+        num_learning_epochs=4, # 5,
+        num_mini_batches=1, # 4,
+        learning_rate=1.0e-4, # 1.0e-3, 
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
