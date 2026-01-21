@@ -49,7 +49,7 @@ class RslRlPpoActorCriticCfg:
     activation: str = MISSING
     """The activation function for the actor and critic networks."""
 
-    last_activation: str = MISSING
+    last_activation_mod: str = MISSING
     """The activation function for the last layer of the actor and critic networks. None results in a linear last layer."""
 
 

@@ -78,19 +78,19 @@ class paper_G1Rewards(paper_RewardsCfg):
     # bipedal_reward
     bipedal_reward = RewTerm(
         func=mdp.bipedal_reward,
-        weight=0.5,
+        weight=0.6, #0.65
         params={
             "left_foot_cfg": SceneEntityCfg(
-                "robot", body_names="left_ankle_roll_link"
+                "robot", body_names="left_ankle_.*"# "left_ankle_roll_link"
             ),
             "left_foot_sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names="left_ankle_roll_link"
+                "contact_forces", body_names="left_ankle_.*" # "left_ankle_roll_link"
             ),
             "right_foot_cfg": SceneEntityCfg(
-                "robot", body_names="right_ankle_roll_link"
+                "robot", body_names="right_ankle_.*"# "right_ankle_roll_link"
             ),
             "right_foot_sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names="right_ankle_roll_link"
+                "contact_forces", body_names="right_ankle_.*"# "right_ankle_roll_link"
             ),
         },
     )
@@ -98,7 +98,7 @@ class paper_G1Rewards(paper_RewardsCfg):
     # cmd_reward
     cmd_reward = RewTerm(
         func=mdp.cmd_reward,
-        weight=0.35,
+        weight=0.35, #0.25
         params={
             "command_name": "base_velocity",
             "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),   ### check if is correct ###
@@ -109,20 +109,87 @@ class paper_G1Rewards(paper_RewardsCfg):
 
     smooth_reward = RewTerm(
         func=mdp.smooth_reward,
-        weight=0.15,
+        weight=0.15, #0.1
         params={"asset_cfg": SceneEntityCfg("robot"),
                 "asset_root_cfg": SceneEntityCfg("robot", body_names="pelvis")},
     )
                 
-    # # bias term
-    # bias = RewTerm(
-    #     func=mdp.bias,
-    #     weight=1.0 )
+    # bias term
+    bias = RewTerm(
+        func=mdp.bias,
+        weight=0.5 )
 
-    # is alive term
-    is_alive = RewTerm(
-        func=mdp.is_alive,
-        weight=1.0 )
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_yaw_frame_exp,
+        weight=1.0,
+        params={"command_name": "base_velocity", "std": 1},
+    )
+    track_ang_vel_z_exp = RewTerm(
+        func=mdp.track_ang_vel_z_world_exp, weight=1.0, params={"command_name": "base_velocity", "std": 0.5}
+    )
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.2)
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.0e-6)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-7)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
+    # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-1.0)
+    # Penalize ankle joint limits
+    dof_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
+    )
+    # Penalize deviation from default of the joints that are not essential for locomotion
+    joint_deviation_hip = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
+    )
+    joint_deviation_arms = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*_shoulder_pitch_joint",
+                    ".*_shoulder_roll_joint",
+                    ".*_shoulder_yaw_joint",
+                    ".*_elbow_pitch_joint",
+                    ".*_elbow_roll_joint",
+                ],
+            )
+        },
+    )
+    joint_deviation_fingers = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.05,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                joint_names=[
+                    ".*_five_joint",
+                    ".*_three_joint",
+                    ".*_six_joint",
+                    ".*_four_joint",
+                    ".*_zero_joint",
+                    ".*_one_joint",
+                    ".*_two_joint",
+                ],
+            )
+        },
+    )
+    joint_deviation_torso = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_joint")},
+    )
+
+    # # is alive term
+    # is_alive = RewTerm(
+    #     func=mdp.is_alive,
+    #     weight=1.0 )
 
     # termination penalty
     termination_penalty = RewTerm(
@@ -177,7 +244,7 @@ class paper_G1RoughEnvCfg(paper_LocomotionVelocityRoughEnvCfg):
         # Commands
         self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = "torso_link"

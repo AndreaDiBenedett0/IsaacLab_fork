@@ -62,8 +62,9 @@ def normalize(type_of_quantity, quantity):
         return 1.0 - torch.exp(-2.0 * torch.abs(q))
 
     elif typ == "o":                    # pass the quat_T * quat as quantity  (1-() è l'errore tra le due orientazioni, quat identici prodotto 1, opposti, -1)
-        err = 1.0 - q
-        return 1.0 - torch.exp(-3.0 * (err * err))
+        # err = 1.0 - q
+        # return 1.0 - torch.exp(-3.0 * (err * err))
+        return 1.0 - torch.exp(-3.0 * (1-(q*q)))
 
     elif typ == "ad":                   # pass the norm of the differece between actual and previous action as quantity
         qp = torch.clamp(q, min=0)
@@ -91,12 +92,20 @@ def foot_reward(env: ManagerBasedRLEnv,
     # phi = (phi + offset) % 1.0                  # col modulo faccio in pratica un wraparound per rimanere nell'intervallo [0,1]
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]        # [num_envs, history_len, num_selected_bodies, 3]. these are normal contact forces in world frame
+    # print("[DEBUG] history len:", contact_sensor.cfg.history_length)   ### --- IGNORE --- ###
+    # net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]        # [num_envs, history_len, num_selected_bodies, 3]. these are normal contact forces in world frame
+    # net_contact_forces = contact_sensor.data.net_forces_w_history[:, contact_sensor.cfg.history_length-1, sensor_cfg.body_ids, :].norm(dim=-1)
+    net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).mean(dim=1)   # average over foot bodies  # [num_envs, 1]
+    # print("[DEBUG] foot reward net contact forces shape(", foot, "): ", net_contact_forces.shape)  ### --- IGNORE --- ###
+    # sum the contact forces over the foot bodies
+    net_contact_forces = net_contact_forces.mean(dim=-1)
     asset = env.scene[asset_cfg.name]
     lin_body_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :].norm(dim=-1)  # [num_envs, num_selected_bodies, 3]
+    lin_body_vel = lin_body_vel.sum(dim=-1, keepdim=True)   # sum over foot bodies -> [num_envs, 1]
 
     normalized_force = normalize("f", net_contact_forces)
-    normalized_speed = normalize("s", lin_body_vel)    
+    normalized_speed = normalize("s", lin_body_vel)  
+    # print("[DEBUG] foot reward components (", foot, "): ", normalized_force, normalized_speed)  ### --- IGNORE --- ###  
 
     # swing = indicator_von_mises(phi, swing_start, swing_end)
     # stance = indicator_von_mises(phi, stance_start, stance_end)
@@ -117,10 +126,28 @@ def foot_reward(env: ManagerBasedRLEnv,
     swing  = table[idx, 0]
     stance = table[idx, 1]
 
+
+    
+    normalized_force = normalized_force.squeeze(-1)   # [4096]
+    normalized_speed = normalized_speed.squeeze(-1)   # [4096]
+
+
+    # print("[DEBUG] foot reward swing and stance (", foot, "): ", swing, stance)  ### --- IGNORE --- ###
+    # print("[DEBUG] foot reward swing and stance dimensions (", foot, "): ", swing.shape, stance.shape)  ### --- IGNORE --- ###
+    # print("[DEBUG] foot reward normalized force and speed dimensions (", foot, "): ", normalized_force.shape, normalized_speed.shape)  ### --- IGNORE --- ###
+    
+    # print("[DEBUG] foot reward components (", foot, "): ", swing.shape, stance.shape, normalized_force.shape, normalized_speed.shape)  ### --- IGNORE --- ###
+    return_rew = ((0 * stance * normalized_force) 
+          + ((-1) * swing * normalized_force) 
+          + ((-1) * stance * normalized_speed)
+          + (0 * swing * normalized_speed))# sum over foot bodies
+
+
+    # print("[DEBUG] foot reward (", foot, "): ", return_rew)  ### --- IGNORE --- ### 
     return ((0 * stance * normalized_force) 
           + ((-1) * swing * normalized_force) 
           + ((-1) * stance * normalized_speed)
-          + (0 * swing * normalized_speed)).sum(dim=-1)  # sum over foot bodies
+          + (0 * swing * normalized_speed))  # sum over foot bodies
 
 # bipedal reward
 def bipedal_reward(env: ManagerBasedRLEnv, 
@@ -139,10 +166,12 @@ def bipedal_reward(env: ManagerBasedRLEnv,
     
     # swing_start, swing_end = 0.0, ratio
     # stance_start, stance_end = ratio, 1.0
-
+    # print("[DEBUG] sensor bodies :", left_foot_sensor_cfg.body_names, right_foot_sensor_cfg.body_names)  ### --- IGNORE --- ###
+    # print("[DEBUG] bodies for foot reward:", left_foot_cfg.body_names, right_foot_cfg.body_names)  ### --- IGNORE --- ###
     reward_left = foot_reward(env, left_foot_cfg, left_foot_sensor_cfg, "left_foot")
     reward_right = foot_reward(env, right_foot_cfg, right_foot_sensor_cfg, "right_foot")
 
+    # print("[DEBUG] bipedal reward components: ", (reward_left, reward_right))  ### --- IGNORE --- ###
     return reward_left + reward_right
     
 
@@ -155,14 +184,20 @@ def cmd_reward(env: ManagerBasedRLEnv, command_name: str,
     asset_ob: RigidObject = env.scene[asset_cfg.name]
 
     vx = env.command_manager.get_command(command_name)[:, 0]
+    # print("[DEBUG] cmd reward desired vx:", vx)   ### --- IGNORE --- ###
     vy = env.command_manager.get_command(command_name)[:, 1]
+    # print("[DEBUG] cmd reward desired vy:", vy)   ### --- IGNORE --- ###
 
     lin_root_vel_x_error = vx - asset.data.root_lin_vel_b[:, 0]              # in local frame
     lin_root_vel_y_error = vy - asset.data.root_lin_vel_b[:, 1]
-
+    # print("[DEBUG] lin vel x:", asset.data.root_lin_vel_b[:, 0])   ### --- IGNORE --- ###
+    # print("[DEBUG] lin vel y:", asset.data.root_lin_vel_b[:, 1])   ### --- IGNORE --- ###
+    # print("[DEBUG] cmd reward lin vel errors:", lin_root_vel_x_error.shape, lin_root_vel_y_error.shape)   ### --- IGNORE --- ###
     # --- Orientazione (quaternioni [w, x, y, z]) ---
-    q_actual = asset.data.root_quat_w                               
+    q_actual = asset.data.root_quat_w     
+    # print("[DEBUG] cmd reward actual quat:", q_actual)   ### --- IGNORE --- ###                          
     q_actual = torch.nn.functional.normalize(q_actual, p=2, dim=-1)
+    # print("[DEBUG] cmd reward actual quat normalized:", q_actual)   ### --- IGNORE --- ###
     # q_des la derivo da i comandi di vel x e y nel frame del robot e poi la devo trasformare in quaternione relativo al world frame
     #identita
     # q_des = torch.tensor([1.0, 0.0, 0.0, 0.0],
@@ -172,15 +207,18 @@ def cmd_reward(env: ManagerBasedRLEnv, command_name: str,
     
 
     heading = asset_ob.data.heading_w  # Yaw heading of the base frame (in radians). Shape is (num_instances,)  (estraggo yaw del robot nel world frame)
-    
+    # print("[DEBUG] cmd heading:", heading)   ### --- IGNORE --- ###
     phi_body = torch.atan2(vy, vx)  # direzione del comando nel frame corpo
+    # print("[DEBUG] cmd phi_body:", phi_body)   ### --- IGNORE --- ###
     speed2 = vx*vx + vy*vy
+    # print("[DEBUG] cmd speed2:", speed2)   ### --- IGNORE --- ###
 
     # world yaw della risultante
     eps = 1e-8
     phi_world = torch.where(speed2 >= eps, heading + phi_body, heading) # dove la vel è maggiore di eps uso heading + phi_body, altrimenti heading (per evitare NaN quando la velocità è troppo bassa)
 
     q_des = yaw_to_quat(phi_world)
+    # print("[DEBUG] cmd reward desired quat:", q_des)   ### --- IGNORE --- ###
     # q_des = quat_normalize(q)
 
     mask = (speed2 >= eps)
@@ -197,6 +235,7 @@ def cmd_reward(env: ManagerBasedRLEnv, command_name: str,
     q_orientation = normalize("o", dot)
     q_orientation = q_orientation * mask.float()   # se la velocità è troppo bassa, non considerare il reward di orientamento
 
+    # print("[DEBUG] cmd reward components: ", (q_dot_x+ q_dot_y+ q_orientation).shape)  ### --- IGNORE --- ###
     return -(q_dot_x + q_dot_y + q_orientation)
 
 # smooth reward
@@ -210,20 +249,12 @@ def smooth_reward(env: ManagerBasedRLEnv,
 
     action_diff = env.action_manager.action - env.action_manager.prev_action
     torques = asset.data.applied_torque[:, asset_cfg.joint_ids]
-    pelvis_acc = asset_root.data.body_ang_vel_w.norm(dim=-1) + asset_root.data.body_lin_acc_w.norm(dim=-1)  #POTRESTI AVRE PROBLEMA DI DIMENSIONI PERCHE HA DIM [ENV, 1, 1] E POTRESTI VOLERE SOLO [ENV, 1]
-
-    # q_action_diff = normalize("ad", action_diff.norm(dim=1))
-    # q_torques = normalize("t", torques.norm(dim=1))
-    # q_pelvis_acc = normalize("pa", pelvis_acc)
-
 
     # usa i body_ids (pelvis) dalla cfg
     body_ids = asset_root_cfg.body_ids   # atteso: uno o pochi ID (per pelvis)
-
     # Seleziona i body e poi norma sull'asse dei 3 componenti
     pelvis_ang = asset_root.data.body_ang_vel_w[:, body_ids, :].norm(dim=-1)  # (N, B)
     pelvis_lin = asset_root.data.body_lin_acc_w[:, body_ids, :].norm(dim=-1)  # (N, B)
-
     # Riduci su i body (se B=1, .squeeze; se >1, usa .mean/.sum a tua scelta)
     pelvis_acc = (pelvis_ang + pelvis_lin).mean(dim=1)        # -> (N,)
     # In alternativa: .sum(dim=1) o pesi diversi per body
@@ -233,13 +264,12 @@ def smooth_reward(env: ManagerBasedRLEnv,
     q_torques     = normalize("t",  torques.norm(dim=1,     keepdim=True)).squeeze(1)  # (N,)
     q_pelvis_acc  = normalize("pa", pelvis_acc.unsqueeze(1)).squeeze(1)                # (N,)
 
-
     # def _shape(x): return tuple(x.shape) if torch.is_tensor(x) else f"<{type(x)}>"
     # print("[DEBUG] q_action_diff", _shape(q_action_diff))
     # print("[DEBUG] q_torques    ", _shape(q_torques))
     # print("[DEBUG] q_pelvis_acc ", _shape(q_pelvis_acc))
 
-
+    # print("[DEBUG] smooth reward components: ", q_action_diff, q_torques, q_pelvis_acc)  ### --- IGNORE --- ###
     return -(q_action_diff + q_torques + q_pelvis_acc)
 
 def bias(env: ManagerBasedRLEnv) -> torch.Tensor:

@@ -423,8 +423,10 @@ class paper_LocomotionVelocityRoughEnvCfg(ManagerBasedPaperRLEnvCfg):
     # Scene settings
     scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
     # Basic settings
+    # observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
     observations: paper_ObservationsCfg = paper_ObservationsCfg()
-    actions: paper_ActionsCfg = paper_ActionsCfg()
+    # actions: paper_ActionsCfg = paper_ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
     # MDP settings
     rewards: paper_RewardsCfg = paper_RewardsCfg()

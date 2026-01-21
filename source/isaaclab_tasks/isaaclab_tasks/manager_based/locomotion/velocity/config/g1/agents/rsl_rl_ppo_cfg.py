@@ -6,6 +6,7 @@
 from isaaclab.utils import configclass
 
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg,  RslRlPpoActorCriticRecurrentCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl.symmetry_cfg import RslRlSymmetryCfg
 
 
 @configclass
@@ -53,7 +54,7 @@ class G1FlatPPORunnerCfg(G1RoughPPORunnerCfg):
 
 @configclass
 class G1RoughPPORunnerPaperCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 300 # 24
+    num_steps_per_env = 500 # 24
     max_iterations = 3000
     save_interval = 50
     experiment_name = "g1_rough_paper"
@@ -70,12 +71,18 @@ class G1RoughPPORunnerPaperCfg(RslRlOnPolicyRunnerCfg):
         # last_activation="tanh",
     )
     algorithm = RslRlPpoAlgorithmCfg(
+        # symmetry_cfg=RslRlSymmetryCfg(
+        #             use_data_augmentation=False,
+        #             use_mirror_loss=True,
+        #             mirror_loss_coeff=1.0,
+        #             data_augmentation_func=None,
+        #         ),
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
         entropy_coef=0.008,
         num_learning_epochs=4, # 5,
-        num_mini_batches=1, # 4,
+        num_mini_batches=64, # 4,
         learning_rate=1.0e-4, # 1.0e-3, 
         schedule="adaptive",
         gamma=0.99,

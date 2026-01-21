@@ -26,6 +26,47 @@ import numpy as np
 from scipy.stats import vonmises
 
 
+import matplotlib.pyplot as plt
+
+def plot_C(vm_left, vm_right, title="C_frc / C_spd (left/right)"):
+    Cfrc_L, Cspd_L = compute_C_from_VM(vm_left)
+    Cfrc_R, Cspd_R = compute_C_from_VM(vm_right)
+    phi = torch.arange(vm_left.shape[0]).float() / vm_left.shape[0]  # [0,1)
+
+    plt.figure(figsize=(10,5))
+    plt.plot(phi.cpu(), Cfrc_L.cpu(), label="C_frc Left",  color="tab:blue")
+    plt.plot(phi.cpu(), Cfrc_R.cpu(), label="C_frc Right", color="tab:orange")
+    plt.plot(phi.cpu(), Cspd_L.cpu(), label="C_spd Left",  color="tab:green")
+    plt.plot(phi.cpu(), Cspd_R.cpu(), label="C_spd Right", color="tab:red")
+    plt.axhline(0.0, color="k", linewidth=0.8)
+    plt.legend(); plt.title(title); plt.xlabel("phi (ciclo)"); plt.ylabel("coefficiente")
+    plt.tight_layout(); plt.show()
+
+
+
+def compute_C_from_VM(vm_table: torch.Tensor):
+    """
+    vm_table: Tensor (L, 2), [:,0]=E[I_swing(phi)], [:,1]=E[I_stance(phi)]
+    Ritorna:
+      C_frc: (L,)  = c_swing_frc * E[I_swing] + c_stance_frc * E[I_stance]
+      C_spd: (L,)  = c_swing_spd * E[I_swing] + c_stance_spd * E[I_stance]
+    Coefficienti per walking:
+      forza: penalizza in swing -> (-1, 0)
+      speed: penalizza in stance -> (0, -1)
+    """
+    swing  = vm_table[:, 0]
+    stance = vm_table[:, 1]
+
+    # Coefficienti (walking)
+    c_swing_frc,  c_stance_frc  = -1.0, 0.0   # forza
+    c_swing_spd,  c_stance_spd  =  0.0, -1.0  # speed
+
+    C_frc = c_swing_frc * swing + c_stance_frc * stance
+    C_spd = c_swing_spd * swing + c_stance_spd * stance
+    return C_frc, C_spd
+
+
+
 def _print_obs_shape(obs):
     if isinstance(obs, torch.Tensor):
         print("[step] obs_buf (Tensor):", tuple(obs.shape))
@@ -525,7 +566,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # -- counter for curriculum
         self.common_step_counter = 0
 
-        self.L = 40 # number of discrete timesteps in the period
+        self.L = 60 # number of discrete timesteps in the period
         self.ratio = 0.5  
         self.swing_start, self.swing_end = 0.0, self.ratio
         self.stance_start, self.stance_end = self.ratio, 1.0
@@ -553,9 +594,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
 
         self.VM_right = _build_von_mises_table(self, self.right_offset, device=self.device)  # (L, 2)
         self.VM_left  = _build_von_mises_table(self, self.left_offset, device=self.device)   # (L, 2)
-        print("Von Mises tables built on device:")
-        print("VM_right :", self.VM_right)
-        print("VM_left :", self.VM_left)
+        # print("[DEBUG] Von Mises tables built on device:")
+        # print("[DEBUG] VM_right :", self.VM_right)
+        # print("[DEBUG] VM_left :", self.VM_left)
 
         # # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
         # self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -563,6 +604,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # self.phi_right = torch.zeros(self.num_envs, device=self.device)
         # self.phi_left = torch.zeros(self.num_envs, device=self.device)
 
+        # plot_C(self.VM_left, self.VM_right)
 
         # store the render mode
         self.render_mode = render_mode
