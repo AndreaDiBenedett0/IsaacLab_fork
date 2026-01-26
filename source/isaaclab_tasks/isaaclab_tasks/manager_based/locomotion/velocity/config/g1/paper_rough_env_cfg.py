@@ -95,29 +95,29 @@ class paper_G1Rewards(paper_RewardsCfg):
         },
     )
 
-    # cmd_reward
-    cmd_reward = RewTerm(
-        func=mdp.cmd_reward,
-        weight=0.35, #0.25
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),   ### check if is correct ###
-        },
+    # # cmd_reward
+    # cmd_reward = RewTerm(
+    #     func=mdp.cmd_reward,
+    #     weight=0.35, #0.25
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),   ### check if is correct ###
+    #     },
 
-    )
-    # smooth_reward
+    # )
+    # # smooth_reward
 
-    smooth_reward = RewTerm(
-        func=mdp.smooth_reward,
-        weight=0.15, #0.1
-        params={"asset_cfg": SceneEntityCfg("robot"),
-                "asset_root_cfg": SceneEntityCfg("robot", body_names="pelvis")},
-    )
+    # smooth_reward = RewTerm(
+    #     func=mdp.smooth_reward,
+    #     weight=0.15, #0.1
+    #     params={"asset_cfg": SceneEntityCfg("robot"),
+    #             "asset_root_cfg": SceneEntityCfg("robot", body_names="pelvis")},
+    # )
                 
-    # bias term
-    bias = RewTerm(
-        func=mdp.bias,
-        weight=0.5 )
+    # # bias term
+    # bias = RewTerm(
+    #     func=mdp.bias,
+    #     weight=0.5 )
 
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,

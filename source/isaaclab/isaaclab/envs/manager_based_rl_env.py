@@ -729,6 +729,8 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # post-step:
         # -- update env counters (used for curriculum generation)
         self.episode_length_buf += 1  # step in current episode (per env)
+        # if self.episode_length_buf % 60 == 0:
+        #     print("DEBUG[step] episode current simulation time (s):", self.episode_length_buf.float() * self.step_dt)
         self.common_step_counter += 1  # total step (common for all envs)
         self.phi = (self.episode_length_buf % self.L) / self.L
         self.phi_right = (self.phi + self.right_offset) % 1.0 
