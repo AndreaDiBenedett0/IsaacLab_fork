@@ -563,16 +563,28 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
             render_mode: The render mode for the environment. Defaults to None, which
                 is similar to ``"human"``.
         """
+
+        
+
         # -- counter for curriculum
         self.common_step_counter = 0
 
-        self.L = 60 # number of discrete timesteps in the period
-        self.ratio = 0.5  
+        # self.L = 60 # 60 # number of discrete timesteps in the period
+        # self.ratio = 0.5  
+
+        self.L = getattr(cfg, "L", 60)
+        self.ratio = getattr(cfg, "ratio", 0.5)
+
         self.swing_start, self.swing_end = 0.0, self.ratio
         self.stance_start, self.stance_end = self.ratio, 1.0
-        self.kappa = 45 # concentration parameter for Von Mises distribution
-        self.right_offset = 0.5  # phase offset for the right leg
-        self.left_offset = 0.0   # phase offset for the left leg
+        # self.kappa = 45 # concentration parameter for Von Mises distribution
+        # self.right_offset = 0.5  # phase offset for the right leg
+        # self.left_offset = 0.0   # phase offset for the left leg
+
+        self.kappa = getattr(cfg, "kappa", 45)
+        self.right_offset = getattr(cfg, "right_offset", 0.5)
+        self.left_offset = getattr(cfg, "left_offset", 0.0)
+
 
         # Attenzione: self.device NON esiste ancora -> usare cfg.sim.device
         dev = cfg.sim.device
@@ -612,6 +624,10 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # initialize data and constants
         # -- set the framerate of the gym video recorder wrapper so that the playback speed of the produced video matches the simulation
         self.metadata["render_fps"] = 1 / self.step_dt
+
+        # Logging
+        self.save_quantities = getattr(cfg, "save_quantities", False)
+
 
         print("[INFO]: Completed setting up the environment...")
 
@@ -660,6 +676,23 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # perform events at the start of the simulation
         if "startup" in self.event_manager.available_modes:
             self.event_manager.apply(mode="startup")
+
+
+        T = self.max_episode_length   # max steps
+        N = self.num_envs
+
+
+        # # obs_dim = self.observation_manager.get_group_total_dim("policy")
+        # print(f"[DEBUG] Observation space dimensions: {self.observation_space['policy'].shape}")
+
+        self.log_obs = torch.zeros((N, T, self.observation_space['policy'].shape[-1]+self.observation_space['plot_obs'].shape[-1]),  
+                                device=self.device, dtype=torch.float32)
+
+        self.log_act = torch.zeros((N, T, self.action_space.shape[-1]),
+                                device=self.device, dtype=torch.float32)
+
+        self.log_rew_tot = torch.zeros((N, T), device=self.device)
+
 
     def setup_manager_visualizers(self):
         """Creates live visualizers for manager terms."""
@@ -791,6 +824,40 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # print("DEBUG[step] reward_buf:", self.reward_buf)
         # print("DEBUG[step] reset_terminated:", self.reset_terminated)
         # print("DEBUG[step] reset_time_outs:", self.reset_time_outs)
+
+
+        step_idx = int(self.common_step_counter % self.max_episode_length)
+
+        # print(f"[DEBUG] obs_buf: ", self.obs_buf)
+        # # Ottieni osservazione flattenata del gruppo "policy" senza ricomputare (usa cache)
+        # flat_obs = self.observation_manager.group_obs_concatenate()   
+        flat_obs = torch.cat([v.reshape(v.shape[0], -1) for v in self.obs_buf.values()], dim=1)
+
+
+        if self.save_quantities:
+
+
+            import os
+
+            save_dir = "/home/user-05/isaac_lab_projects/IsaacLab_fork/logs/rsl_rl/data_rollout/"   # scegli tu
+
+            os.makedirs(save_dir, exist_ok=True)  # crea se non esiste
+
+            
+            self.log_obs[:, step_idx] = flat_obs# self.obs_buf
+            self.log_act[:, step_idx] = action
+            self.log_rew_tot[:, step_idx] = self.reward_buf
+
+
+            if self.common_step_counter % 100 == 0:
+                filename = os.path.join(save_dir, f"rollout_{self.common_step_counter:08d}.pt")
+                torch.save({
+                    "obs": self.log_obs[:, :step_idx].cpu(),
+                    "act": self.log_act[:, :step_idx].cpu(),
+                    "rew": self.log_rew_tot[:, :step_idx].cpu(),
+                }, filename)
+
+
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
     def render(self, recompute: bool = False) -> np.ndarray | None:
@@ -901,6 +968,8 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # batch the spaces for vectorized environments
         self.observation_space = gym.vector.utils.batch_space(self.single_observation_space, self.num_envs)
         self.action_space = gym.vector.utils.batch_space(self.single_action_space, self.num_envs)
+
+        
 
     def _reset_idx(self, env_ids: Sequence[int]):
         """Reset environments based on specified indices.

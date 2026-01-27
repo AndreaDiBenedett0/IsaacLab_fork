@@ -184,6 +184,8 @@ class ObservationManager(ManagerBase):
     Properties.
     """
 
+    
+
     @property
     def active_terms(self) -> dict[str, list[str]]:
         """Name of active observation terms in each group.

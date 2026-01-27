@@ -1,7 +1,18 @@
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
-
+from isaaclab.envs import ViewerCfg
 from .paper_rough_env_cfg import paper_G1RoughEnvCfg
+
+
+# from .recorders_cfg import (
+#     ActionStateRecorderManagerCfg,
+#     InitialStateRecorderCfg,
+#     PostStepStatesRecorderCfg,
+#     PreStepActionsRecorderCfg,
+#     PreStepFlatPolicyObservationsRecorderCfg,
+#     PostStepProcessedActionsRecorderCfg,
+# )
+
 
 
 @configclass
@@ -10,12 +21,17 @@ class paper_G1FlatEnvCfg(paper_G1RoughEnvCfg):
         # post init of parent
         super().__post_init__()
 
+
+
+
+
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
         # no height scan
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
+        # self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/pelvis"
         # no terrain curriculum
         self.curriculum.terrain_levels = None
 
@@ -36,6 +52,27 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
         # post init of parent
         super().__post_init__()
 
+        # #Recorder settings
+        # self.recorders = ActionStateRecorderManagerCfg(
+        #     recorders=[
+        #         InitialStateRecorderCfg(),
+        #         PreStepActionsRecorderCfg(),
+        #         PostStepProcessedActionsRecorderCfg(),
+        #         PreStepFlatPolicyObservationsRecorderCfg(),
+        #         PostStepStatesRecorderCfg(),
+        #     ],
+        #     data
+        # )
+
+        self.save_quantities = True
+
+        # self.ratio=0.5
+
+        self.L=30
+        # self.kappa=20
+        # self.right_offset=0.5
+        # self.left_offset=0.0
+
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
@@ -44,3 +81,14 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+
+        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0, 0)
+
+
+
+        # Viewer
+        self.viewer = ViewerCfg(eye=(5.5, 5.5, 1.3), origin_type="asset_root", env_index=0, asset_name="robot")
+        # viewer: ViewerCfg = ViewerCfg(
+        # eye=(0.0, 3.0, 1.25), lookat=(0.0, 0.0, 0.5), origin_type="asset_body", asset_name="robot", body_name="pelvis")

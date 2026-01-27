@@ -223,7 +223,23 @@ class paper_ObservationsCfg:
             self.enable_corruption = True
             self.concatenate_terms = True
 
+    @configclass
+    class PlotObsCfg(ObsGroup):
+        """Observations for plotting purposes."""
+
+        # observation terms (order preserved)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        pelvis_pos_w = ObsTerm(func=mdp.body_pose_w, 
+                                params={"asset_cfg": SceneEntityCfg("robot", body_names="pelvis")})
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
     policy: PolicyCfg = PolicyCfg()
+    plot_obs: PlotObsCfg = PlotObsCfg()
 
 
 @configclass
