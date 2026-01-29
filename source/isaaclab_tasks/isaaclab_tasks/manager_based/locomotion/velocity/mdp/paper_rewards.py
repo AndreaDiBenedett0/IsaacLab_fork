@@ -103,6 +103,13 @@ def foot_reward(env: ManagerBasedRLEnv,
     lin_body_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :].norm(dim=-1)  # [num_envs, num_selected_bodies, 3]
     lin_body_vel = lin_body_vel.sum(dim=-1, keepdim=True)   # sum over foot bodies -> [num_envs, 1]
 
+    if foot == "right_foot":
+        env.log_feet_frc_r[:, env.step_idx] = net_contact_forces
+        env.log_feet_spd_r[:, env.step_idx] = lin_body_vel.squeeze(-1)
+    else:  # left_foot
+        env.log_feet_frc_l[:, env.step_idx] = net_contact_forces
+        env.log_feet_spd_l[:, env.step_idx] = lin_body_vel.squeeze(-1)
+    
     normalized_force = normalize("f", net_contact_forces)
     normalized_speed = normalize("s", lin_body_vel)  
     # print("[DEBUG] foot reward components (", foot, "): ", normalized_force, normalized_speed)  ### --- IGNORE --- ###  
@@ -130,6 +137,13 @@ def foot_reward(env: ManagerBasedRLEnv,
     
     normalized_force = normalized_force.squeeze(-1)   # [4096]
     normalized_speed = normalized_speed.squeeze(-1)   # [4096]
+
+    if foot == "right_foot":
+        env.log_n_feet_frc_r[:, env.step_idx] = normalized_force
+        env.log_n_feet_spd_r[:, env.step_idx] = normalized_speed
+    else:  # left_foot
+        env.log_n_feet_frc_l[:, env.step_idx] = normalized_force
+        env.log_n_feet_spd_l[:, env.step_idx] = normalized_speed
 
 
     # print("[DEBUG] foot reward swing and stance (", foot, "): ", swing, stance)  ### --- IGNORE --- ###
@@ -170,6 +184,9 @@ def bipedal_reward(env: ManagerBasedRLEnv,
     # print("[DEBUG] bodies for foot reward:", left_foot_cfg.body_names, right_foot_cfg.body_names)  ### --- IGNORE --- ###
     reward_left = foot_reward(env, left_foot_cfg, left_foot_sensor_cfg, "left_foot")
     reward_right = foot_reward(env, right_foot_cfg, right_foot_sensor_cfg, "right_foot")
+
+    env.log_feet_rew_l[:, env.step_idx] = reward_left
+    env.log_feet_rew_r[:, env.step_idx] = reward_right
 
     # print("[DEBUG] bipedal reward components: ", (reward_left, reward_right))  ### --- IGNORE --- ###
     return reward_left + reward_right

@@ -680,6 +680,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
 
         T = self.max_episode_length   # max steps
         N = self.num_envs
+        self.step_idx = 0
 
 
         # # obs_dim = self.observation_manager.get_group_total_dim("policy")
@@ -692,6 +693,21 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
                                 device=self.device, dtype=torch.float32)
 
         self.log_rew_tot = torch.zeros((N, T), device=self.device)
+
+        self.log_feet_rew_r = torch.zeros((N, T), device=self.device)
+        self.log_feet_rew_l = torch.zeros((N, T), device=self.device)
+
+        self.log_feet_frc_r = torch.zeros((N, T), device=self.device)
+        self.log_feet_frc_l = torch.zeros((N, T), device=self.device)
+
+        self.log_feet_spd_r = torch.zeros((N, T), device=self.device)
+        self.log_feet_spd_l = torch.zeros((N, T), device=self.device)
+
+        self.log_n_feet_frc_r = torch.zeros((N, T), device=self.device)
+        self.log_n_feet_frc_l = torch.zeros((N, T), device=self.device)
+
+        self.log_n_feet_spd_r = torch.zeros((N, T), device=self.device)
+        self.log_n_feet_spd_l = torch.zeros((N, T), device=self.device)
 
 
     def setup_manager_visualizers(self):
@@ -826,7 +842,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # print("DEBUG[step] reset_time_outs:", self.reset_time_outs)
 
 
-        step_idx = int(self.common_step_counter % self.max_episode_length)
+        self.step_idx = int(self.common_step_counter % self.max_episode_length)
 
         # print(f"[DEBUG] obs_buf: ", self.obs_buf)
         # # Ottieni osservazione flattenata del gruppo "policy" senza ricomputare (usa cache)
@@ -844,17 +860,27 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
             os.makedirs(save_dir, exist_ok=True)  # crea se non esiste
 
             
-            self.log_obs[:, step_idx] = flat_obs# self.obs_buf
-            self.log_act[:, step_idx] = action
-            self.log_rew_tot[:, step_idx] = self.reward_buf
+            self.log_obs[:, self.step_idx] = flat_obs# self.obs_buf
+            self.log_act[:, self.step_idx] = action
+            self.log_rew_tot[:, self.step_idx] = self.reward_buf
 
 
             if self.common_step_counter % 100 == 0:
                 filename = os.path.join(save_dir, f"rollout_{self.common_step_counter:08d}.pt")
                 torch.save({
-                    "obs": self.log_obs[:, :step_idx].cpu(),
-                    "act": self.log_act[:, :step_idx].cpu(),
-                    "rew": self.log_rew_tot[:, :step_idx].cpu(),
+                    "obs": self.log_obs[:, :self.step_idx].cpu(),
+                    "act": self.log_act[:, :self.step_idx].cpu(),
+                    "rew": self.log_rew_tot[:, :self.step_idx].cpu(),
+                    "feet_rew_r": self.log_feet_rew_r[:, :self.step_idx].cpu(),
+                    "feet_rew_l": self.log_feet_rew_l[:, :self.step_idx].cpu(),
+                    "feet_frc_r": self.log_feet_frc_r[:, :self.step_idx].cpu(),
+                    "feet_frc_l": self.log_feet_frc_l[:, :self.step_idx].cpu(),
+                    "feet_spd_r": self.log_feet_spd_r[:, :self.step_idx].cpu(),
+                    "feet_spd_l": self.log_feet_spd_l[:, :self.step_idx].cpu(),
+                    "n_feet_frc_r": self.log_n_feet_frc_r[:, :self.step_idx].cpu(),
+                    "n_feet_frc_l": self.log_n_feet_frc_l[:, :self.step_idx].cpu(),
+                    "n_feet_spd_r": self.log_n_feet_spd_r[:, :self.step_idx].cpu(),
+                    "n_feet_spd_l": self.log_n_feet_spd_l[:, :self.step_idx].cpu(),
                 }, filename)
 
 

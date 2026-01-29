@@ -21,7 +21,7 @@ class paper_G1FlatEnvCfg(paper_G1RoughEnvCfg):
         # post init of parent
         super().__post_init__()
 
-
+        self.L=30
 
 
 
@@ -42,7 +42,7 @@ class paper_G1FlatEnvCfg(paper_G1RoughEnvCfg):
         #     "robot", joint_names=[".*_hip_.*", ".*_knee_joint"]
         # )
         # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.6)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
@@ -82,7 +82,7 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 0.2)
         self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
         self.commands.base_velocity.ranges.ang_vel_z = (0, 0)
 
