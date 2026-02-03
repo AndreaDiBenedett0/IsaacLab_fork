@@ -97,6 +97,7 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
 
 
         # Viewer
-        self.viewer = ViewerCfg(eye=(5.5, 5.5, 1.3), origin_type="asset_root", env_index=0, asset_name="robot")
+        self.viewer = ViewerCfg(eye=(0.0, -4.5, 0.8), origin_type="asset_root", env_index=0, asset_name="robot")
         # viewer: ViewerCfg = ViewerCfg(
-        # eye=(0.0, 3.0, 1.25), lookat=(0.0, 0.0, 0.5), origin_type="asset_body", asset_name="robot", body_name="pelvis")
+        # eye=(0.0, 3.0, 1.25), lookat=(0.0, 0.0, 0.5), origin_type="asset_body", asset_name="robot", body_name="pelvis") 
+        # 5.5, 5.5, 1.3

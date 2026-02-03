@@ -111,6 +111,13 @@ def foot_reward(env: ManagerBasedRLEnv,
     # print("[DEBUG] foot reward lin body vel after sum (", foot, "): ", lin_body_vel)  ### --- IGNORE --- ###
 
     # print("[DEBUG] foot reward net contact forces and lin body vel (", foot, "): ", net_contact_forces, lin_body_vel)  ### --- IGNORE --- ###
+    if foot == "right_foot":
+        # print("DEBUG foot pos:", foot, asset.data.body_pos_w[:, asset_cfg.body_ids[1]])  # type: ignore)
+        env.log_feet_pos_r[:, env.step_idx, :] = asset.data.body_pos_w[:, asset_cfg.body_ids[1]]  # type: ignore
+    if foot == "left_foot":
+        # print("DEBUG foot pos:", foot, asset.data.body_pos_w[:, asset_cfg.body_ids][1])  # type: ignore)
+        env.log_feet_pos_l[:, env.step_idx, :] = asset.data.body_pos_w[:, asset_cfg.body_ids[1]]
+
 
     if foot == "right_foot":
         env.log_feet_frc_r[:, env.step_idx] = net_contact_forces

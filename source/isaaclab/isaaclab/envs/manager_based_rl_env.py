@@ -765,6 +765,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.log_n_feet_spd_r = torch.zeros((N, T), device=self.device)
         self.log_n_feet_spd_l = torch.zeros((N, T), device=self.device)
 
+        self.log_feet_pos_r = torch.zeros((N, T, 3), device=self.device)
+        self.log_feet_pos_l = torch.zeros((N, T, 3), device=self.device)
+
 
     def setup_manager_visualizers(self):
         """Creates live visualizers for manager terms."""
@@ -958,6 +961,8 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
                     "n_feet_frc_l": self.log_n_feet_frc_l[:, :self.step_idx].cpu(),
                     "n_feet_spd_r": self.log_n_feet_spd_r[:, :self.step_idx].cpu(),
                     "n_feet_spd_l": self.log_n_feet_spd_l[:, :self.step_idx].cpu(),
+                    "feet_pos_r": self.log_feet_pos_r[:, :self.step_idx, :].cpu(),
+                    "feet_pos_l": self.log_feet_pos_l[:, :self.step_idx, :].cpu()
                 }, filename)
 
 
