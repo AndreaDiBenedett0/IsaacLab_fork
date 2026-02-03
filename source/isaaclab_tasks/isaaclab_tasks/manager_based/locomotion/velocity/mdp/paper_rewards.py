@@ -92,16 +92,25 @@ def foot_reward(env: ManagerBasedRLEnv,
     # phi = (phi + offset) % 1.0                  # col modulo faccio in pratica un wraparound per rimanere nell'intervallo [0,1]
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # print("[DEBUG] foot reward sensor name (", foot, "): ", sensor_cfg.name)  ### --- IGNORE --- ###
     # print("[DEBUG] history len:", contact_sensor.cfg.history_length)   ### --- IGNORE --- ###
     # net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0]        # [num_envs, history_len, num_selected_bodies, 3]. these are normal contact forces in world frame
     # net_contact_forces = contact_sensor.data.net_forces_w_history[:, contact_sensor.cfg.history_length-1, sensor_cfg.body_ids, :].norm(dim=-1)
     net_contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).mean(dim=1)   # average over foot bodies  # [num_envs, 1]
+    # print("[DEBUG] foot reward contact sensor name (", foot, "): ", sensor_cfg.body_ids)  ### --- IGNORE --- ###
+    # print("[DEBUG] net_contact_forces before mean(", foot, "): ", net_contact_forces)  ### --- IGNORE --- ###
     # print("[DEBUG] foot reward net contact forces shape(", foot, "): ", net_contact_forces.shape)  ### --- IGNORE --- ###
     # sum the contact forces over the foot bodies
     net_contact_forces = net_contact_forces.mean(dim=-1)
+    # print("[DEBUG] foot reward net contact forces after mean (", foot, "): ", net_contact_forces)  ### --- IGNORE --- ###
     asset = env.scene[asset_cfg.name]
+    # print("[DEBUG] foot reward asset name (", foot, "): ", asset_cfg.name)  ### --- IGNORE --- ###
     lin_body_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :].norm(dim=-1)  # [num_envs, num_selected_bodies, 3]
+    # print("[DEBUG] foot reward lin body vel before sum (", foot, "): ", lin_body_vel)  ### --- IGNORE --- ###
     lin_body_vel = lin_body_vel.sum(dim=-1, keepdim=True)   # sum over foot bodies -> [num_envs, 1]
+    # print("[DEBUG] foot reward lin body vel after sum (", foot, "): ", lin_body_vel)  ### --- IGNORE --- ###
+
+    # print("[DEBUG] foot reward net contact forces and lin body vel (", foot, "): ", net_contact_forces, lin_body_vel)  ### --- IGNORE --- ###
 
     if foot == "right_foot":
         env.log_feet_frc_r[:, env.step_idx] = net_contact_forces
@@ -109,9 +118,13 @@ def foot_reward(env: ManagerBasedRLEnv,
     else:  # left_foot
         env.log_feet_frc_l[:, env.step_idx] = net_contact_forces
         env.log_feet_spd_l[:, env.step_idx] = lin_body_vel.squeeze(-1)
+
+    # print("[DEBUG] foot reward net contact forces and lin body vel (", foot, "): ", net_contact_forces, lin_body_vel)  ### --- IGNORE --- ###
     
     normalized_force = normalize("f", net_contact_forces)
     normalized_speed = normalize("s", lin_body_vel)  
+
+    # print("[DEBUG] foot reward normalized force and speed (", foot, "): ", normalized_force, normalized_speed)  ### --- IGNORE --- ###
     # print("[DEBUG] foot reward components (", foot, "): ", normalized_force, normalized_speed)  ### --- IGNORE --- ###  
 
     # swing = indicator_von_mises(phi, swing_start, swing_end)
@@ -120,18 +133,70 @@ def foot_reward(env: ManagerBasedRLEnv,
         # swing = env.Von_Mises_Values_right[float(env.phi_right) ][0]    # get swing value from precomputed dict
         # stance = env.Von_Mises_Values_right[float(env.phi_right) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
         idx = env.idx_right
-        table = env.VM_right
+        # print("[DEBUG] foot reward right foot idx:", idx)   ### --- IGNORE --- ###
+        if env.variable_L:
+            # for each env select the correct table value based on its L
+            # access the dictionary using the current L of the table and picjk the value at idx
+            swing = torch.zeros_like(idx, dtype=torch.float32, device=idx.device)
+            stance = torch.zeros_like(idx, dtype=torch.float32, device=idx.device)
+
+            for Li in env.L_list:   # iteri solo sui valori di L possibili, non sugli env
+                mask = (env.L == Li)
+                # print("[DEBUG] foot reward right foot L=", Li, " mask:", mask)   ### --- IGNORE --- ###
+                if mask.any():
+                    # prendi gli indici corrispondenti a questo L
+                    idx_i = idx[mask]
+
+                    # estrai dalla tabella corretta
+                    table = env.VM_right_tables[Li]       # vettore lungo Li
+                    table_t = table.to(idx.device).to(torch.float32)
+                    # table_t = torch.tensor(table, device=idx.device, dtype=torch.float32)
+
+                    # indexing vettoriale
+                    swing[mask] = table_t[idx_i, 0]
+                    stance[mask] = table_t[idx_i, 1]
+                    # print("[DEBUG] foot reward right foot L=", Li, " swing:", swing[mask], " stance:", stance[mask])   ### --- IGNORE --- ###
+                    # print("[DEBUG] foot reward right foot L=", Li, "swing completed:", swing, " stance completed:", stance)   ### --- IGNORE --- ###
+                    # print("[DEBUG] foot reward right foot L=", Li, " table_t:", table_t)   ### --- IGNORE --- ###
+                    
+        else:
+            table = env.VM_right
+            swing  = table[idx, 0]
+            stance = table[idx, 1]
+            # print("[DEBUG] foot reward right foot fixed L swing:", swing, " stance:", stance)   ### --- IGNORE --- ###
 
     else:   # left_foot
         # swing = env.Von_Mises_Values_left[float(env.phi_left) ][0]    # get swing value from precomputed dict
         # stance = env.Von_Mises_Values_left[float(env.phi_left) ][1]       ### controlla che acceda correttamete (vedi se serve round per riconoscere la chiave) ###
         idx = env.idx_left
-        table = env.VM_left
+        if env.variable_L:
+            # for each env select the correct table value based on its L
+            # access the dictionary using the current L of the table and picjk the value at idx
+            swing = torch.zeros_like(idx, dtype=torch.float32, device=idx.device)
+            stance = torch.zeros_like(idx, dtype=torch.float32, device=idx.device)
+
+            for Li in env.L_list:   # iteri solo sui valori di L possibili, non sugli env
+                mask = (env.L == Li)
+                if mask.any():
+                    # prendi gli indici corrispondenti a questo L
+                    idx_i = idx[mask]
+
+                    # estrai dalla tabella corretta
+                    table = env.VM_left_tables[Li]       # vettore lungo Li
+                    table_t = table.to(idx.device).to(torch.float32)
+                    # table_t = torch.tensor(table, device=idx.device, dtype=torch.float32)
+
+                    # indexing vettoriale
+                    swing[mask] = table_t[idx_i, 0]
+                    stance[mask] = table_t[idx_i, 1]
+        else:
+            table = env.VM_left
+            swing  = table[idx, 0]
+            stance = table[idx, 1]
     
     # Estrai swing e stance per ogni env -> (num_envs,)
     # colonna 0 = swing, colonna 1 = stance
-    swing  = table[idx, 0]
-    stance = table[idx, 1]
+    
 
 
     

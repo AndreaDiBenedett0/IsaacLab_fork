@@ -28,6 +28,20 @@ from scipy.stats import vonmises
 
 import matplotlib.pyplot as plt
 
+#update L per env based on commanded speed
+def update_L(env) -> torch.Tensor:
+    v_x = env.command_manager.get_command("base_velocity")[:, 0]
+    # print("[DEBUG] Commanded v_x:", v_x)
+    vel_thresholds = [0.4, 0.8, 1.2]  # m/s
+    L_values = env.L_list  # possible L values
+    L_new = torch.where(v_x < vel_thresholds[0], L_values[0],
+            torch.where(v_x < vel_thresholds[1], L_values[1],
+            torch.where(v_x < vel_thresholds[2], L_values[2],
+                        L_values[3])))
+    # print("[DEBUG] Updated L per env:", L_new)
+
+    return L_new
+
 def plot_C(vm_left, vm_right, title="C_frc / C_spd (left/right)"):
     Cfrc_L, Cspd_L = compute_C_from_VM(vm_left)
     Cfrc_R, Cspd_R = compute_C_from_VM(vm_right)
@@ -77,10 +91,10 @@ def _print_obs_shape(obs):
         print("[step] obs_buf (Unknown):", type(obs))
 
 
-def compute_von_mises_values(env, offset: float = 0.0) -> dict:
+def compute_von_mises_values(env, L, offset: float = 0.0) -> dict:
     """Compute the Von Mises values for a given number of discrete timesteps L."""
     # 1) Fase normalizzata e in radianti
-    phi = np.linspace(0.0, 1.0, env.L, endpoint=False)
+    phi = np.linspace(0.0, 1.0, L, endpoint=False)
     phi = (phi + offset) % 1.0  # apply offset
 
     phi_rad = phi * (2.0 * np.pi)
@@ -132,8 +146,8 @@ def compute_von_mises_values(env, offset: float = 0.0) -> dict:
 
 
 # Costruisci torch.Tensor (L, 2): [:,0]=swing, [:,1]=stance
-def _build_von_mises_table(env, offset: float, device: str) -> torch.Tensor:
-    vm = compute_von_mises_values(env, offset)   # <<-- restituisce il dict {phi: (swing,stance)}
+def _build_von_mises_table(env, L, offset: float, device: str) -> torch.Tensor:
+    vm = compute_von_mises_values(env, L, offset)   # <<-- restituisce il dict {phi: (swing,stance)}
     # ordina per phi crescente e crea tensore su device sim
     phis = sorted(vm.keys())
     vals = [vm[phi] for phi in phis]              # lista di tuple (swing, stance)
@@ -572,7 +586,21 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # self.L = 60 # 60 # number of discrete timesteps in the period
         # self.ratio = 0.5  
 
-        self.L = getattr(cfg, "L", 60)
+        self.variable_L = getattr(cfg, "variable_L", False)
+
+        if self.variable_L:
+            self.L_list = getattr(cfg, "L_list", [16, 30, 46, 60])
+            # print("[INFO] Using variable L with values: ", self.L_list)
+            #empty tensor to store L per env
+            self.L = torch.ones((cfg.scene.num_envs,), dtype=torch.long, device=cfg.sim.device)
+            # print("[DEBUG] L tensor initialized:", self.L)
+        else:
+            self.L_single = getattr(cfg, "L", 60)
+            # print("[INFO] Using fixed L =", self.L_single)
+            self.L = torch.full((cfg.scene.num_envs,), self.L_single, dtype=torch.long, device=cfg.sim.device)
+            # print("[DEBUG] L tensor:", self.L)
+
+
         self.ratio = getattr(cfg, "ratio", 0.5)
 
         self.swing_start, self.swing_end = 0.0, self.ratio
@@ -604,19 +632,47 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # self.Von_Mises_Values_right = compute_von_mises_values(self, self.right_offset)     # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
         # self.Von_Mises_Values_left  = compute_von_mises_values(self, self.left_offset)      # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
 
-        self.VM_right = _build_von_mises_table(self, self.right_offset, device=self.device)  # (L, 2)
-        self.VM_left  = _build_von_mises_table(self, self.left_offset, device=self.device)   # (L, 2)
-        # print("[DEBUG] Von Mises tables built on device:")
-        # print("[DEBUG] VM_right :", self.VM_right)
-        # print("[DEBUG] VM_left :", self.VM_left)
+        self.cnt = 0 
+        if self.variable_L:
+            # print("[DEBUG] Building Von Mises tables for variable L...")
+            # build a dict of tables for each L in L_list
+            self.VM_right_tables = dict()
+            self.VM_left_tables  = dict()
+            for L_val in self.L_list:
+                vm_r = _build_von_mises_table(self, L_val, self.right_offset, device=dev)  # (L, 2)
+                vm_l = _build_von_mises_table(self, L_val, self.left_offset, device=dev)   # (L, 2)
+                self.VM_right_tables[L_val] = vm_r
+                self.VM_left_tables[L_val]  = vm_l
+            #     print(f"[DEBUG] VM tables built for L={L_val}")
+            # print("[DEBUG] Von Mises tables built on device:")
+            # for L_val in self.L_list:
+            #     print(f"[DEBUG] L={L_val} -> VM_right :", self.VM_right_tables[L_val])
+            #     print(f"[DEBUG] L={L_val} -> VM_left  :", self.VM_left_tables[L_val])
+        else:
+            # print("[DEBUG] Building Von Mises tables for fixed L...")
+            self.VM_right = _build_von_mises_table(self, self.L_single, self.right_offset, device=self.device)  # (L, 2)
+            self.VM_left  = _build_von_mises_table(self, self.L_single, self.left_offset, device=self.device)   # (L, 2)
+            # print("[DEBUG] VM tables built for L=", self.L_single)
+            # print("[DEBUG] Von Mises tables built on device:")
+            # print("[DEBUG] VM_right :", self.VM_right)
+            # print("[DEBUG] VM_left :", self.VM_left)
 
         # # initialize the episode length buffer BEFORE loading the managers to use it in mdp functions.
         # self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
         # self.phi_right = torch.zeros(self.num_envs, device=self.device)
         # self.phi_left = torch.zeros(self.num_envs, device=self.device)
-
-        # plot_C(self.VM_left, self.VM_right)
+        
+        # if not self.variable_L:
+        #     print("[DEBUG] Plotting C coefficients for fixed L...")
+        #     plot_C(self.VM_left, self.VM_right)
+        # else:
+        #     print("[DEBUG] Plotting C coefficients for variable L...")
+        #     for L_val in self.L_list:
+        #         print(f"[DEBUG] Plotting C for L={L_val}...")
+        #         vm_r = self.VM_right_tables[L_val]
+        #         vm_l = self.VM_left_tables[L_val]
+        #         plot_C(vm_l, vm_r, title=f"C Coefficients (L={L_val})")
 
         # store the render mode
         self.render_mode = render_mode
@@ -747,7 +803,6 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         """
 
         # scale actions from [-1, 1]
-
         # process actions
         self.action_manager.process_action(action.to(self.device))
 
@@ -781,6 +836,11 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # if self.episode_length_buf % 60 == 0:
         #     print("DEBUG[step] episode current simulation time (s):", self.episode_length_buf.float() * self.step_dt)
         self.common_step_counter += 1  # total step (common for all envs)
+
+        if self.variable_L:
+            self.L = update_L(self)
+
+
         self.phi = (self.episode_length_buf % self.L) / self.L
         self.phi_right = (self.phi + self.right_offset) % 1.0 
         self.phi_left  = (self.phi + self.left_offset) % 1.0
@@ -792,8 +852,25 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         # self.idx_right = torch.clamp((self.phi_right * self.L).long(), 0, self.L - 1)  # (num_envs,)
         # self.idx_left  = torch.clamp((self.phi_left  * self.L).long(), 0, self.L - 1)  # (num_envs,)
 
-        self.idx_right = torch.clamp(torch.round(self.phi_right * self.L).long(), 0, self.L - 1)
-        self.idx_left  = torch.clamp(torch.round(self.phi_left  * self.L).long(), 0, self.L - 1)
+        # self.idx_right = torch.clamp(torch.round(self.phi_right * self.L).long(), 0, self.L - 1)
+        # self.idx_left  = torch.clamp(torch.round(self.phi_left  * self.L).long(), 0, self.L - 1)
+
+
+        Lf = self.L.to(self.phi_right.dtype)             # per il prodotto con phi
+        idx_right = torch.round(self.phi_right * Lf).to(torch.long)
+        idx_left  = torch.round(self.phi_left  * Lf).to(torch.long)
+
+        # clamp per-env: min=0, max=L-1 per ogni env
+        idx_right = torch.clamp(idx_right, min=0)   # clamp inferiore
+        idx_left  = torch.clamp(idx_left,  min=0)
+
+        # Per il clamp superiore con limite per-env usa torch.minimum
+        idx_right = torch.minimum(idx_right, self.L.to(torch.long) - 1)
+        idx_left  = torch.minimum(idx_left,  self.L.to(torch.long) - 1)
+
+        self.idx_right = idx_right
+        self.idx_left  = idx_left
+
 
         # print("DEBUG[step] idx_right:", self.idx_right)
         # print("DEBUG[step] idx_left: ", self.idx_left)
@@ -865,7 +942,7 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
             self.log_rew_tot[:, self.step_idx] = self.reward_buf
 
 
-            if self.common_step_counter % 100 == 0:
+            if self.common_step_counter % 999 == 0:
                 filename = os.path.join(save_dir, f"rollout_{self.common_step_counter:08d}.pt")
                 torch.save({
                     "obs": self.log_obs[:, :self.step_idx].cpu(),

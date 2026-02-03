@@ -21,7 +21,7 @@ class paper_G1FlatEnvCfg(paper_G1RoughEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        self.L=30
+        self.variable_L = True
 
 
 
@@ -66,9 +66,17 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
 
         self.save_quantities = True
 
-        # self.ratio=0.5
 
-        self.L=30
+        self.vel_list = [(0.3, 0.0, 0.0),
+                        (0.8, 0.0, 0.0),
+                        (1.2, 0.0, 0.0)]
+
+        self.command_switch_time = 5.0   # ogni quanti secondi cambiare velocità
+
+
+        # self.ratio=0.5
+        self.variable_L = True
+        self.seed = 0
         # self.kappa=20
         # self.right_offset=0.5
         # self.left_offset=0.0
@@ -82,7 +90,7 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
-        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 0.2)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.6)
         self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
         self.commands.base_velocity.ranges.ang_vel_z = (0, 0)
 

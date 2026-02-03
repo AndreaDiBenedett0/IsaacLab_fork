@@ -86,6 +86,8 @@ class UniformVelocityCommand(CommandTerm):
         self.metrics["error_vel_xy"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_vel_yaw"] = torch.zeros(self.num_envs, device=self.device)
 
+        self.cnt = 0
+
     def __str__(self) -> str:
         """Return a string representation of the command generator."""
         msg = "UniformVelocityCommand:\n"
@@ -127,6 +129,16 @@ class UniformVelocityCommand(CommandTerm):
         r = torch.empty(len(env_ids), device=self.device)
         # -- linear velocity - x direction
         self.vel_command_b[env_ids, 0] = r.uniform_(*self.cfg.ranges.lin_vel_x)
+    
+        vel_list = [0.2, 0.6, 1.0, 1.4]
+
+        period = 1  # ogni quanti step cambiare
+        index = (self.cnt // period) % len(vel_list)
+
+        self.vel_command_b[env_ids, 0] = vel_list[index]
+
+        self.cnt += 1
+
         # -- linear velocity - y direction
         self.vel_command_b[env_ids, 1] = r.uniform_(*self.cfg.ranges.lin_vel_y)
         # -- ang vel yaw - rotation around z
@@ -160,6 +172,7 @@ class UniformVelocityCommand(CommandTerm):
         # TODO: check if conversion is needed
         standing_env_ids = self.is_standing_env.nonzero(as_tuple=False).flatten()
         self.vel_command_b[standing_env_ids, :] = 0.0
+
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # set visibility of markers
