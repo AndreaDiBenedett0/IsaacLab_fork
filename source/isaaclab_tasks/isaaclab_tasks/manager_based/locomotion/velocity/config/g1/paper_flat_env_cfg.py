@@ -66,12 +66,13 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
 
         self.save_quantities = True
 
+        self.episode_length_s = 40.0
 
-        self.vel_list = [(0.3, 0.0, 0.0),
-                        (0.8, 0.0, 0.0),
-                        (1.2, 0.0, 0.0)]
 
-        self.command_switch_time = 5.0   # ogni quanti secondi cambiare velocità
+        # self.vel_list = [(0.3, 0.0, 0.0),  # in teoria non serve
+        #                 (0.8, 0.0, 0.0),
+        #                 (1.2, 0.0, 0.0)]
+
 
 
         # self.ratio=0.5
@@ -93,11 +94,12 @@ class paper_G1FlatEnvCfg_PLAY(paper_G1FlatEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.6)
         self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
         self.commands.base_velocity.ranges.ang_vel_z = (0, 0)
+        self.commands.base_velocity.resampling_time_range = (1,1)
 
 
 
         # Viewer
-        self.viewer = ViewerCfg(eye=(0.0, -4.5, 0.8), origin_type="asset_root", env_index=0, asset_name="robot")
+        self.viewer = ViewerCfg(eye=(2.5, 2.5, 1.0), origin_type="asset_root", env_index=0, asset_name="robot")
         # viewer: ViewerCfg = ViewerCfg(
         # eye=(0.0, 3.0, 1.25), lookat=(0.0, 0.0, 0.5), origin_type="asset_body", asset_name="robot", body_name="pelvis") 
         # 5.5, 5.5, 1.3

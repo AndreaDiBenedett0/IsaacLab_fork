@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 def update_L(env) -> torch.Tensor:
     v_x = env.command_manager.get_command("base_velocity")[:, 0]
     # print("[DEBUG] Commanded v_x:", v_x)
+    # vel_thresholds = [0.3, 0.6, 0.9]  # m/s
     vel_thresholds = [0.4, 0.8, 1.2]  # m/s
     L_values = env.L_list  # possible L values
     L_new = torch.where(v_x < vel_thresholds[0], L_values[0],
@@ -589,12 +590,14 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
         self.variable_L = getattr(cfg, "variable_L", False)
 
         if self.variable_L:
+            # self.L_list = getattr(cfg, "L_list", [16, 26, 36, 46])
             self.L_list = getattr(cfg, "L_list", [16, 30, 46, 60])
             # print("[INFO] Using variable L with values: ", self.L_list)
             #empty tensor to store L per env
             self.L = torch.ones((cfg.scene.num_envs,), dtype=torch.long, device=cfg.sim.device)
             # print("[DEBUG] L tensor initialized:", self.L)
         else:
+            # self.L_single = getattr(cfg, "L", 30)
             self.L_single = getattr(cfg, "L", 60)
             # print("[INFO] Using fixed L =", self.L_single)
             self.L = torch.full((cfg.scene.num_envs,), self.L_single, dtype=torch.long, device=cfg.sim.device)
@@ -767,6 +770,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
 
         self.log_feet_pos_r = torch.zeros((N, T, 3), device=self.device)
         self.log_feet_pos_l = torch.zeros((N, T, 3), device=self.device)
+
+        self.log_terminated = torch.zeros((N, T), device=self.device)
+        self.log_truncated = torch.zeros((N, T), device=self.device)
 
 
     def setup_manager_visualizers(self):
@@ -943,6 +949,8 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
             self.log_obs[:, self.step_idx] = flat_obs# self.obs_buf
             self.log_act[:, self.step_idx] = action
             self.log_rew_tot[:, self.step_idx] = self.reward_buf
+            self.log_terminated[:,self.step_idx] = self.reset_terminated
+            self.log_truncated[:,self.step_idx] = self.reset_time_outs
 
 
             if self.common_step_counter % 999 == 0:
@@ -962,7 +970,9 @@ class ManagerBasedPaperRLEnv(ManagerBasedEnv, gym.Env):
                     "n_feet_spd_r": self.log_n_feet_spd_r[:, :self.step_idx].cpu(),
                     "n_feet_spd_l": self.log_n_feet_spd_l[:, :self.step_idx].cpu(),
                     "feet_pos_r": self.log_feet_pos_r[:, :self.step_idx, :].cpu(),
-                    "feet_pos_l": self.log_feet_pos_l[:, :self.step_idx, :].cpu()
+                    "feet_pos_l": self.log_feet_pos_l[:, :self.step_idx, :].cpu(),
+                    "terminated": self.log_terminated[:,:self.step_idx].cpu(),
+                    "truncated": self.log_truncated[:,:self.step_idx].cpu()
                 }, filename)
 
 

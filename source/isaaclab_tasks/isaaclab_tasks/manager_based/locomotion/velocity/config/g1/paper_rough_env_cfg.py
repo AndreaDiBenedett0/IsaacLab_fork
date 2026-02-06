@@ -17,6 +17,7 @@ from isaaclab_assets import G1_MINIMAL_CFG  # isort: skip
 
 import numpy as np
 from scipy.stats import vonmises
+import math
 
 # def compute_von_mises_values(self, offset: float = 0.0) -> dict:
 #     """Compute the Von Mises values for a given number of discrete timesteps L."""
@@ -217,6 +218,14 @@ class paper_G1RoughEnvCfg(paper_LocomotionVelocityRoughEnvCfg):
         # self.Von_Mises_Values_left  = compute_von_mises_values(self, self.left_offset)      # is a dict [phi index (from 0 to L-1)->(swing_value, stance_value)]
         # Scene
         self.scene.robot = G1_MINIMAL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+        desired_yaw = 0.15  # <- cambia qui l'angolo yaw desiderato in radianti
+        cy = math.cos(0.5 * desired_yaw)
+        sy = math.sin(0.5 * desired_yaw)
+        # quaternion (w, x, y, z) for rotation around z
+        self.scene.robot.init_state.rot = (cy, 0.0, 0.0, sy)
+        # # self.scene.robot.init_state.rot = (1.0, 0.0, 0.0, 0.0)
+
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
         # Randomization

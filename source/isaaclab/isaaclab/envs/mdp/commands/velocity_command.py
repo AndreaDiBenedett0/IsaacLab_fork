@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.managers import CommandTerm
+import numpy as np
 from isaaclab.markers import VisualizationMarkers
 
 if TYPE_CHECKING:
@@ -76,6 +77,8 @@ class UniformVelocityCommand(CommandTerm):
         # -- robot
         self.robot: Articulation = env.scene[cfg.asset_name]
 
+        self.cmd_index = torch.zeros(self.num_envs, device=self.device)
+
         # crete buffers to store the command
         # -- command: x vel, y vel, yaw vel, heading
         self.vel_command_b = torch.zeros(self.num_envs, 3, device=self.device)
@@ -130,7 +133,12 @@ class UniformVelocityCommand(CommandTerm):
         # -- linear velocity - x direction
         self.vel_command_b[env_ids, 0] = r.uniform_(*self.cfg.ranges.lin_vel_x)
     
-        vel_list = [0.2, 0.6, 1.0, 1.4]
+        # vel_list = [0.2, 0.5, 0.8, 1.1]
+        # vel_list = [0.0, 0.8, 0.8, 0.0]
+        ramp_up = np.linspace(0,1,12).tolist()
+        ramp_down = np.linspace(1,0,12).tolist()
+        const_vel = np.full(16, 1.0).tolist()
+        vel_list = ramp_up+const_vel+ramp_down
 
         period = 1  # ogni quanti step cambiare
         index = (self.cnt // period) % len(vel_list)
@@ -138,6 +146,7 @@ class UniformVelocityCommand(CommandTerm):
         self.vel_command_b[env_ids, 0] = vel_list[index]
 
         self.cnt += 1
+
 
         # -- linear velocity - y direction
         self.vel_command_b[env_ids, 1] = r.uniform_(*self.cfg.ranges.lin_vel_y)
